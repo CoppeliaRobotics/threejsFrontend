@@ -15,12 +15,12 @@ function sysCall_init()
     end
 
     wsPort=sim.getNamedInt32Param('visualizationStream.ws.port') or 23020
-    print('Add-on "'..addOnBaseName..'": WS endpoint on port '..tostring(wsPort)..'...')
+    sim.addLog(sim.verbosity_scriptinfos,'WS endpoint on port '..tostring(wsPort)..'...')
     if sim.getNamedBoolParam('visualizationStream.ws.retryOnStartFailure') then
         while true do
             local r,e=pcall(function() wsServer=simWS.start(wsPort) end)
             if r then break end
-            print('Add-on "'..addOnBaseName..'": WS failed to start ('..e..'). Retrying...')
+            sim.addLog(sim.verbosity_scriptwarnings,'WS failed to start ('..e..'). Retrying...')
             sim.wait(0.5,false)
         end
     else
@@ -38,6 +38,8 @@ function sysCall_init()
 
     sim.test('sim.mergeEvents',true)
     sim.test('sim.cborEvents',true)
+    
+    sim.addLog(sim.verbosity_scriptinfos,'e.g. in your local web browser, type: http://127.0.0.1:'..tostring(wsPort))
 end
 
 function sysCall_addOnScriptSuspend()
