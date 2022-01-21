@@ -135,6 +135,7 @@ class VisualizationStreamClient {
         this.port = port;
         this.codec = codec;
         this.websocket = new ReconnectingWebSocket(`ws://${this.host}:${this.port}`);
+        this.sessionId = '???';
         this.seq = -1;
         if(codec == 'cbor') {
             this.websocket.binaryType = 'arraybuffer';
@@ -153,6 +154,14 @@ class VisualizationStreamClient {
     }
 
     handleEvent(eventData) {
+        if(eventData.event === 'appSession' && eventData.data.sessionId) {
+            if(this.sessionId !== eventData.data.sessionId) {
+                this.seq = -1;
+                this.sessionId = eventData.data.sessionId;
+            }
+            return;
+        }
+
         if(eventData.seq !== undefined && eventData.seq <= this.seq && settings.events.discardOutOfSequence && settings.events.warnOutOfSequence) {
             console.warn(`Discarded event with seq=${eventData.seq} (mine is ${this.seq})`);
         }
