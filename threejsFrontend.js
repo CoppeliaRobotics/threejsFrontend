@@ -1641,6 +1641,242 @@ class UnknownObject extends BaseObject {
     }
 }
 
+class DrawingObjectVisualPoint extends THREE.Points {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.BufferGeometry(),
+            new THREE.PointsMaterial({size: 0.01 * size, vertexColors: true})
+        );
+        this.userData.itemType = 'point';
+        this.userData.maxItemCount = maxItemCount;
+        this.userData.size = size;
+
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    clear() {
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        const positionAttr = this.geometry.getAttribute('position');
+        const colorAttr = this.geometry.getAttribute('color');
+
+        for(var i = 0; i < point.length; i++)
+            positionAttr.array[3 * index + i] = point[i];
+        positionAttr.needsUpdate = true;
+
+        for(var i = 0; i < point.length; i++)
+            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
+        colorAttr.needsUpdate = true;
+
+        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
+    }
+
+    update() {
+        this.geometry.computeBoundingBox();
+        this.geometry.computeBoundingSphere();
+    }
+
+    setSize(size) {
+        this.userData.size = size;
+        this.material.size = 0.01 * size;
+    }
+}
+
+class DrawingObjectVisualLine extends THREE.LineSegments {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({linewidth: 10 * size, vertexColors: true})
+        );
+        this.userData.itemType = 'line';
+        this.userData.maxItemCount = maxItemCount;
+        this.userData.size = size;
+
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 6, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 6, 3));
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    clear() {
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        const positionAttr = this.geometry.getAttribute('position');
+        const colorAttr = this.geometry.getAttribute('color');
+
+        for(var i = 0; i < point.length; i++)
+            positionAttr.array[6 * index + i] = point[i];
+        positionAttr.needsUpdate = true;
+
+        for(var i = 0; i < point.length; i++)
+            colorAttr.array[6 * index + i] = color.length > 0 ? color[i % color.length] : this.parent.userData.color[i % 3];
+        colorAttr.needsUpdate = true;
+
+        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, 2 * (index + 1)));
+    }
+
+    update() {
+        this.geometry.computeBoundingBox();
+        this.geometry.computeBoundingSphere();
+    }
+
+    setSize(size) {
+        this.userData.size = size;
+        this.material.linewidth = 10 * size;
+    }
+}
+
+class DrawingObjectVisualLineStrip extends THREE.Line {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.BufferGeometry(),
+            new THREE.LineBasicMaterial({linewidth: 10 * size, vertexColors: true})
+        );
+        this.userData.itemType = 'lineStrip';
+        this.userData.maxItemCount = maxItemCount;
+        this.userData.size = size;
+
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    clear() {
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        const positionAttr = this.geometry.getAttribute('position');
+        const colorAttr = this.geometry.getAttribute('color');
+
+        for(var i = 0; i < point.length; i++)
+            positionAttr.array[3 * index + i] = point[i];
+        positionAttr.needsUpdate = true;
+
+        for(var i = 0; i < point.length; i++)
+            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
+        colorAttr.needsUpdate = true;
+
+        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
+    }
+
+    update() {
+        this.geometry.computeBoundingBox();
+        this.geometry.computeBoundingSphere();
+    }
+
+    setSize(size) {
+        this.userData.size = size;
+        this.material.linewidth = 10 * size;
+    }
+}
+
+class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
+    constructor(geometry, material, maxItemCount, size) {
+        super(geometry, material, maxItemCount);
+        this.userData.maxItemCount = maxItemCount;
+        this.userData.size = size;
+    }
+
+    clear() {
+        this.count = 0;
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        var p = new THREE.Vector3(...point);
+        var q = new THREE.Quaternion(...quaternion);
+        var s = new THREE.Vector3(1, 1, 1);
+        var m = new THREE.Matrix4();
+        m.compose(p, q, s);
+        this.setMatrixAt(index, m);
+        this.instanceMatrix.needsUpdate = true;
+
+        var c = new THREE.Color(...(color.length > 0 ? color : this.parent.userData.color));
+        this.setColorAt(index, c);
+        this.instanceColor.needsUpdate = true;
+
+        if(this.count <= index)
+            this.count = index + 1;
+    }
+
+    update() {
+        this.instanceMatrix.needsUpdate = true;
+        if(this.instanceColor)
+            this.instanceColor.needsUpdate = true;
+    }
+
+    setSize(size) {
+        this.userData.size = size;
+        this.material.linewidth = 10 * size;
+    }
+}
+
+class DrawingObjectVisualCubePoint extends DrawingObjectVisualInstancedMesh {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.BoxGeometry(size, size, size),
+            new THREE.MeshPhongMaterial({
+                color: new THREE.Color(1, 1, 1),
+            }),
+            maxItemCount,
+            size
+        );
+        this.userData.itemType = 'cubePoint';
+    }
+}
+
+class DrawingObjectVisualDiscPoint extends DrawingObjectVisualInstancedMesh {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.CircleGeometry(size, 16),
+            new THREE.MeshPhongMaterial({
+                color: new THREE.Color(1, 1, 1),
+            }),
+            maxItemCount
+        );
+        this.userData.itemType = 'discPoint';
+    }
+}
+
+class DrawingObjectVisualSpherePoint extends DrawingObjectVisualInstancedMesh {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.SphereGeometry(size, 16, 8),
+            new THREE.MeshPhongMaterial({
+                color: new THREE.Color(1, 1, 1),
+            }),
+            maxItemCount
+        );
+        this.userData.itemType = 'spherePoint';
+    }
+}
+
+class DrawingObjectVisualQuadPoint extends DrawingObjectVisualInstancedMesh {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.PlaneGeometry(size, size),
+            new THREE.MeshPhongMaterial({
+                color: new THREE.Color(1, 1, 1),
+            }),
+            maxItemCount
+        );
+        this.userData.itemType = 'quadPoint';
+    }
+}
+
 class DrawingObject extends THREE.Group {
     static objectsByUid = {};
 
@@ -1665,23 +1901,23 @@ class DrawingObject extends THREE.Group {
             return;
 
         if(this.userData.itemType == 'point') {
-            var object = new THREE.Points(
-                new THREE.BufferGeometry(),
-                new THREE.PointsMaterial({size: 0.05, vertexColors: true})
-            );
+            var object = new DrawingObjectVisualPoint(this.userData.maxItemCount, this.userData.size);
         } else if(this.userData.itemType == 'line') {
-            var object = new THREE.LineSegments(
-                new THREE.BufferGeometry(),
-                new THREE.LineBasicMaterial({linewidth: 10, vertexColors: true})
-            );
+            var object = new DrawingObjectVisualLine(this.userData.maxItemCount, this.userData.size);
         } else if(this.userData.itemType == 'lineStrip') {
-            var object = new THREE.Line(
-                new THREE.BufferGeometry(),
-                new THREE.LineBasicMaterial({linewidth: 10, vertexColors: true})
-            );
+            var object = new DrawingObjectVisualLineStrip(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'cubePoint') {
+            var object = new DrawingObjectVisualCubePoint(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'discPoint') {
+            var object = new DrawingObjectVisualDiscPoint(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'spherePoint') {
+            var object = new DrawingObjectVisualSpherePoint(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'quadPoint') {
+            var object = new DrawingObjectVisualQuadPoint(this.userData.maxItemCount, this.userData.size);
         } else {
-            throw `Drawing object of type "${itemType}" is not supported`;
+            throw `Drawing object of type "${this.userData.itemType}" is not supported`;
         }
+        object.name = 'drawingObjectVisual';
         object.userData.type = 'drawingObjectVisual';
         this.add(object);
         return object;
@@ -1697,23 +1933,23 @@ class DrawingObject extends THREE.Group {
             this.setUid(eventData.uid);
         if(eventData.data === undefined)
             return;
-        if(eventData.data.type !== undefined)
-            this.setItemType(eventData.data.type);
+        if(eventData.data.maxCnt !== undefined)
+            this.setMaxItemCount(eventData.data.maxCnt);
+        if(eventData.data.size !== undefined)
+            this.setSize(eventData.data.size);
         if(eventData.data.parentUid !== undefined)
             this.setParent(eventData.data.parentUid);
         if(eventData.data.color !== undefined)
             this.setColor(eventData.data.color);
         if(eventData.data.cyclic !== undefined)
             this.setCyclic(eventData.data.cyclic);
-        if(eventData.data.maxCnt !== undefined)
-            this.setMaxItemCount(eventData.data.maxCnt);
-        if(eventData.data.size !== undefined)
-            this.setSize(eventData.data.size);
+        if(eventData.data.type !== undefined)
+            this.setItemType(eventData.data.type);
         if(eventData.data.points !== undefined || eventData.data.clearPoints === true)
             this.setPoints(
                 eventData.data.points || [],
                 eventData.data.colors || [],
-                eventData.data.normals || [],
+                eventData.data.quaternions || [],
                 !!eventData.data.clearPoints
             );
     }
@@ -1722,19 +1958,20 @@ class DrawingObject extends THREE.Group {
         if(this.userData.itemType !== undefined)
             return;
 
+        if(this.userData.maxItemCount === undefined)
+            throw "maxItemCount must be set before calling setItemType()";
+
+        if(this.userData.size === undefined)
+            throw "size must be set before calling setItemType()";
+
         this.userData.itemType = itemType;
 
         // invoke getter now:
         this.object;
     }
 
-    numPointsPerItem() {
-        if(this.userData.itemType == 'line') return 2;
-        return 1;
-    }
-
-    maxPointsCount() {
-        return this.userData.maxItemCount * this.numPointsPerItem();
+    itemDataLength() {
+        return this.userData.itemType == 'line' ? 6 : 3;
     }
 
     setUid(uid) {
@@ -1778,73 +2015,52 @@ class DrawingObject extends THREE.Group {
         this.userData.maxItemCount = maxItemCount;
         this.userData.writeIndex = 0;
 
-        this.object.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.maxPointsCount() * 3, 3));
-        this.object.geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.maxPointsCount() * 3, 3));
-        this.object.geometry.setDrawRange(0, 0);
     }
 
     setSize(size) {
         this.userData.size = size;
-
-        if(['point'].includes(this.userData.itemType)) {
-            this.object.material.size = 0.01 * size;
-        } else if(['line', 'lineStrip'].includes(this.userData.itemType)) {
-            this.object.material.linewidth = 10 * size;
-        }
     }
 
-    clearPointData() {
-        this.object.geometry.setDrawRange(0, 0);
-        this.userData.writeIndex = 0;
-    }
-
-    incrementWriteIndex(numPoints) {
-        this.userData.writeIndex += numPoints;
-        if(this.userData.cyclic)
-            this.userData.writeIndex = this.userData.writeIndex % this.maxPointsCount();
-        else
-            this.userData.writeIndex = Math.min(this.maxPointsCount(), this.userData.writeIndex);
-
-        this.object.geometry.setDrawRange(0, Math.min(this.maxPointsCount(), this.object.geometry.drawRange.count + numPoints));
-    }
-
-    appendPointData(points, colors, normals) {
-        const position = this.object.geometry.getAttribute('position');
-        const color = this.object.geometry.getAttribute('color');
-
-        if(points.length % (this.numPointsPerItem() * position.itemSize) > 0)
-            throw `Incorrect number of elements in points array, expected a multiple of ${this.numPointsPerItem() * position.itemSize}.`;
-
-        const numPoints = points.length / position.itemSize;
-
-        if(colors.length != 0 && colors.length != color.itemSize * numPoints)
-            throw `Incorrect number of elements in colors array, expected 0 or ${numPoints * color.itemSize}.`;
-
-        for(var i = 0; i < numPoints; i += this.numPointsPerItem()) {
-            for(var j = 0; j < this.numPointsPerItem(); j++) {
-                for(var k = 0; k < position.itemSize; k++)
-                    position.array[position.itemSize * (this.userData.writeIndex + i + j) + k] = points[position.itemSize * (i + j) + k];
-                for(var k = 0; k < color.itemSize; k++)
-                    color.array[color.itemSize * (this.userData.writeIndex + i + j) + k] =
-                        colors.length > 0
-                            ? colors[color.itemSize * (i + j) + k]
-                            : this.userData.color[k];
-            }
+    setPoints(points, colors, quaternions, clear) {
+        if(clear) {
+            this.object.clear();
+            this.userData.writeIndex = 0;
         }
 
-        this.incrementWriteIndex(numPoints);
-        position.needsUpdate = true;
-        color.needsUpdate = true;
-    }
+        const np = this.itemDataLength();
 
-    setPoints(points, colors, normals, clear) {
-        if(clear)
-            this.clearPointData();
+        if(points.length % np > 0)
+            throw `Points data size is not a multiple of ${np}`;
 
-        this.appendPointData(points, colors, normals);
+        const n = points.length / np;
 
-        this.object.geometry.computeBoundingBox();
-        this.object.geometry.computeBoundingSphere();
+        if(colors.length % 3 > 0)
+            throw `Color data size is not a multiple of 3`;
+        if(colors.length % n > 0)
+            throw `Color data size is not a multiple of ${n}`;
+
+        const nc = colors ? colors.length / n : 0;
+
+        for(var j = 0; j < n; j++) {
+            this.object.setPoint(
+                this.userData.writeIndex,
+                points.slice(j * np, (j + 1) * np),
+                colors
+                    ? colors.slice(j * nc, (j + 1) * nc)
+                    : null,
+                quaternions
+                    ? quaternions.slice(j * 4, (j + 1) * 4)
+                    : null
+            );
+
+            this.userData.writeIndex++;
+            if(this.userData.cyclic)
+                this.userData.writeIndex = this.userData.writeIndex % this.userData.maxItemCount;
+            else
+                this.userData.writeIndex = Math.min(this.userData.maxItemCount, this.userData.writeIndex);
+        }
+
+        this.object.update();
     }
 }
 
