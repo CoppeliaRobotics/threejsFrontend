@@ -14,7 +14,7 @@ set(CMAKE_MODULE_PATH
     ${LIBPLUGIN_DIR}/cmake)
 find_package(CoppeliaSim 4.3.0.0 REQUIRED)
 
-coppeliasim_add_addon(simAddOnVisualizationStream.lua)
+coppeliasim_add_addon("simAddOnVisualization Stream.lua")
 coppeliasim_add_addon(threejsFrontend.html)
 coppeliasim_add_addon(threejsFrontend.js)
 coppeliasim_add_plugin_directory(3rdparty)
