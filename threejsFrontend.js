@@ -1641,6 +1641,44 @@ class UnknownObject extends BaseObject {
     }
 }
 
+class TriangleGeometry extends THREE.BufferGeometry {
+	constructor(size = 1) {
+		super();
+		this.type = 'TriangleGeometry';
+
+		this.parameters = {
+			size: size,
+		};
+
+		const size_half = size / 2;
+
+		const indices = [];
+		const vertices = [];
+		const normals = [];
+		const uvs = [];
+
+		for(let i = 0; i < 3; i++) {
+			const w = i * Math.PI * 2 / 3;
+            const x = size_half * Math.cos(w);
+            const y = size_half * Math.sin(w);
+            vertices.push(-x, y, 0);
+            normals.push(0, 0, 1);
+            uvs.push((x + size_half) / size);
+            uvs.push((y + size_half) / size);
+		}
+        indices.push(0);
+
+		//this.setIndex(indices);
+		this.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+		this.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+		//this.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+	}
+
+	static fromJSON(data) {
+		return new TriangleGeometry(data.size);
+	}
+}
+
 class DrawingObjectVisualPoint extends THREE.Points {
     constructor(maxItemCount, size) {
         super(
@@ -1828,7 +1866,7 @@ class DrawingObjectVisualCubePoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.BoxGeometry(size, size, size),
-            new THREE.MeshPhongMaterial({
+            new THREE.MeshBasicMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount,
@@ -1842,7 +1880,7 @@ class DrawingObjectVisualDiscPoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.CircleGeometry(size, 16),
-            new THREE.MeshPhongMaterial({
+            new THREE.MeshBasicMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
@@ -1855,7 +1893,7 @@ class DrawingObjectVisualSpherePoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.SphereGeometry(size, 16, 8),
-            new THREE.MeshPhongMaterial({
+            new THREE.MeshBasicMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
@@ -1868,12 +1906,71 @@ class DrawingObjectVisualQuadPoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.PlaneGeometry(size, size),
-            new THREE.MeshPhongMaterial({
+            new THREE.MeshBasicMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
         );
         this.userData.itemType = 'quadPoint';
+    }
+}
+
+class DrawingObjectVisualTrianglePoint extends DrawingObjectVisualInstancedMesh {
+    constructor(maxItemCount, size) {
+        super(
+            new TriangleGeometry(size),
+            new THREE.MeshBasicMaterial({
+                color: new THREE.Color(1, 1, 1),
+                side: THREE.DoubleSide,
+            }),
+            maxItemCount
+        );
+        this.userData.itemType = 'trianglePoint';
+    }
+}
+
+class DrawingObjectVisualTriangle extends THREE.Mesh {
+    constructor(maxItemCount, size) {
+        super(
+            new THREE.BufferGeometry(),
+            new THREE.MeshBasicMaterial({
+                side: THREE.DoubleSide,
+                vertexColors: true,
+            }),
+        );
+        this.userData.itemType = 'triangle';
+        this.userData.maxItemCount = maxItemCount;
+        this.userData.size = size;
+
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    clear() {
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        const positionAttr = this.geometry.getAttribute('position');
+        const colorAttr = this.geometry.getAttribute('color');
+
+        for(var i = 0; i < point.length; i++)
+            positionAttr.array[3 * index + i] = point[i];
+        positionAttr.needsUpdate = true;
+
+        for(var i = 0; i < point.length; i++)
+            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
+        colorAttr.needsUpdate = true;
+
+        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
+    }
+
+    update() {
+        this.geometry.computeBoundingBox();
+        this.geometry.computeBoundingSphere();
     }
 }
 
@@ -1914,6 +2011,10 @@ class DrawingObject extends THREE.Group {
             var object = new DrawingObjectVisualSpherePoint(this.userData.maxItemCount, this.userData.size);
         } else if(this.userData.itemType == 'quadPoint') {
             var object = new DrawingObjectVisualQuadPoint(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'trianglePoint') {
+            var object = new DrawingObjectVisualTrianglePoint(this.userData.maxItemCount, this.userData.size);
+        } else if(this.userData.itemType == 'triangle') {
+            var object = new DrawingObjectVisualTriangle(this.userData.maxItemCount, this.userData.size);
         } else {
             throw `Drawing object of type "${this.userData.itemType}" is not supported`;
         }
