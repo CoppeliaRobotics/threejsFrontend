@@ -1866,7 +1866,7 @@ class DrawingObjectVisualCubePoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.BoxGeometry(size, size, size),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount,
@@ -1880,7 +1880,7 @@ class DrawingObjectVisualDiscPoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.CircleGeometry(size, 16),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
@@ -1893,7 +1893,7 @@ class DrawingObjectVisualSpherePoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.SphereGeometry(size, 16, 8),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
@@ -1906,7 +1906,7 @@ class DrawingObjectVisualQuadPoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.PlaneGeometry(size, size),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
             }),
             maxItemCount
@@ -1919,7 +1919,7 @@ class DrawingObjectVisualTrianglePoint extends DrawingObjectVisualInstancedMesh 
     constructor(maxItemCount, size) {
         super(
             new TriangleGeometry(size),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
                 side: THREE.DoubleSide,
             }),
@@ -1933,7 +1933,7 @@ class DrawingObjectVisualTriangle extends THREE.Mesh {
     constructor(maxItemCount, size) {
         super(
             new THREE.BufferGeometry(),
-            new THREE.MeshBasicMaterial({
+            new THREE.MeshPhongMaterial({
                 side: THREE.DoubleSide,
                 vertexColors: true,
             }),
