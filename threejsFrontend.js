@@ -1679,6 +1679,42 @@ class TriangleGeometry extends THREE.BufferGeometry {
 	}
 }
 
+class DrawingObjectVisualBufferGeometryMixin {
+    initGeometry() {
+        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.userData.maxItemCount * 3 * this.userData.pointsPerItem, 3));
+        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.userData.maxItemCount * 3 * this.userData.pointsPerItem, 3));
+        this.clear();
+    }
+
+    clear() {
+        this.geometry.setDrawRange(0, 0);
+    }
+
+    updateGeometry() {
+        this.geometry.computeBoundingBox();
+        this.geometry.computeBoundingSphere();
+    }
+
+    setPoint(index, point, color, quaternion) {
+        if(index >= this.userData.maxItemCount) return;
+
+        const ptsPerItem = this.userData.pointsPerItem;
+
+        const positionAttr = this.geometry.getAttribute('position');
+        const colorAttr = this.geometry.getAttribute('color');
+
+        for(var i = 0; i < point.length; i++)
+            positionAttr.array[ptsPerItem * 3 * index + i] = point[i];
+        positionAttr.needsUpdate = true;
+
+        for(var i = 0; i < color.length; i++)
+            colorAttr.array[ptsPerItem * 3 * index + i] = color[i];
+        colorAttr.needsUpdate = true;
+
+        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, ptsPerItem * (index + 1)));
+    }
+}
+
 class DrawingObjectVisualPoint extends THREE.Points {
     constructor(maxItemCount, size) {
         super(
@@ -1688,36 +1724,8 @@ class DrawingObjectVisualPoint extends THREE.Points {
         this.userData.itemType = 'point';
         this.userData.maxItemCount = maxItemCount;
         this.userData.size = size;
-
-        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    clear() {
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    setPoint(index, point, color, quaternion) {
-        if(index >= this.userData.maxItemCount) return;
-
-        const positionAttr = this.geometry.getAttribute('position');
-        const colorAttr = this.geometry.getAttribute('color');
-
-        for(var i = 0; i < point.length; i++)
-            positionAttr.array[3 * index + i] = point[i];
-        positionAttr.needsUpdate = true;
-
-        for(var i = 0; i < point.length; i++)
-            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
-        colorAttr.needsUpdate = true;
-
-        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
-    }
-
-    update() {
-        this.geometry.computeBoundingBox();
-        this.geometry.computeBoundingSphere();
+        this.userData.pointsPerItem = 1;
+        this.initGeometry();
     }
 
     setSize(size) {
@@ -1725,6 +1733,8 @@ class DrawingObjectVisualPoint extends THREE.Points {
         this.material.size = 0.01 * size;
     }
 }
+
+mixin(DrawingObjectVisualPoint, DrawingObjectVisualBufferGeometryMixin);
 
 class DrawingObjectVisualLine extends THREE.LineSegments {
     constructor(maxItemCount, size) {
@@ -1735,36 +1745,8 @@ class DrawingObjectVisualLine extends THREE.LineSegments {
         this.userData.itemType = 'line';
         this.userData.maxItemCount = maxItemCount;
         this.userData.size = size;
-
-        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 6, 3));
-        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 6, 3));
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    clear() {
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    setPoint(index, point, color, quaternion) {
-        if(index >= this.userData.maxItemCount) return;
-
-        const positionAttr = this.geometry.getAttribute('position');
-        const colorAttr = this.geometry.getAttribute('color');
-
-        for(var i = 0; i < point.length; i++)
-            positionAttr.array[6 * index + i] = point[i];
-        positionAttr.needsUpdate = true;
-
-        for(var i = 0; i < point.length; i++)
-            colorAttr.array[6 * index + i] = color.length > 0 ? color[i % color.length] : this.parent.userData.color[i % 3];
-        colorAttr.needsUpdate = true;
-
-        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, 2 * (index + 1)));
-    }
-
-    update() {
-        this.geometry.computeBoundingBox();
-        this.geometry.computeBoundingSphere();
+        this.userData.pointsPerItem = 2;
+        this.initGeometry();
     }
 
     setSize(size) {
@@ -1772,6 +1754,8 @@ class DrawingObjectVisualLine extends THREE.LineSegments {
         this.material.linewidth = 10 * size;
     }
 }
+
+mixin(DrawingObjectVisualLine, DrawingObjectVisualBufferGeometryMixin);
 
 class DrawingObjectVisualLineStrip extends THREE.Line {
     constructor(maxItemCount, size) {
@@ -1782,36 +1766,8 @@ class DrawingObjectVisualLineStrip extends THREE.Line {
         this.userData.itemType = 'lineStrip';
         this.userData.maxItemCount = maxItemCount;
         this.userData.size = size;
-
-        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    clear() {
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    setPoint(index, point, color, quaternion) {
-        if(index >= this.userData.maxItemCount) return;
-
-        const positionAttr = this.geometry.getAttribute('position');
-        const colorAttr = this.geometry.getAttribute('color');
-
-        for(var i = 0; i < point.length; i++)
-            positionAttr.array[3 * index + i] = point[i];
-        positionAttr.needsUpdate = true;
-
-        for(var i = 0; i < point.length; i++)
-            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
-        colorAttr.needsUpdate = true;
-
-        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
-    }
-
-    update() {
-        this.geometry.computeBoundingBox();
-        this.geometry.computeBoundingSphere();
+        this.userData.pointsPerItem = 1;
+        this.initGeometry();
     }
 
     setSize(size) {
@@ -1820,6 +1776,8 @@ class DrawingObjectVisualLineStrip extends THREE.Line {
     }
 }
 
+mixin(DrawingObjectVisualLineStrip, DrawingObjectVisualBufferGeometryMixin);
+
 class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
     constructor(geometry, material, maxItemCount, size) {
         super(geometry, material, maxItemCount);
@@ -1827,8 +1785,19 @@ class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
         this.userData.size = size;
     }
 
+    setSize(size) {
+        this.userData.size = size;
+        this.material.linewidth = 10 * size;
+    }
+
     clear() {
         this.count = 0;
+    }
+
+    updateGeometry() {
+        this.instanceMatrix.needsUpdate = true;
+        if(this.instanceColor)
+            this.instanceColor.needsUpdate = true;
     }
 
     setPoint(index, point, color, quaternion) {
@@ -1842,23 +1811,12 @@ class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
         this.setMatrixAt(index, m);
         this.instanceMatrix.needsUpdate = true;
 
-        var c = new THREE.Color(...(color.length > 0 ? color : this.parent.userData.color));
+        var c = new THREE.Color(...color);
         this.setColorAt(index, c);
         this.instanceColor.needsUpdate = true;
 
         if(this.count <= index)
             this.count = index + 1;
-    }
-
-    update() {
-        this.instanceMatrix.needsUpdate = true;
-        if(this.instanceColor)
-            this.instanceColor.needsUpdate = true;
-    }
-
-    setSize(size) {
-        this.userData.size = size;
-        this.material.linewidth = 10 * size;
     }
 }
 
@@ -1943,38 +1901,12 @@ class DrawingObjectVisualTriangle extends THREE.Mesh {
         this.userData.itemType = 'triangle';
         this.userData.maxItemCount = maxItemCount;
         this.userData.size = size;
-
-        this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setAttribute('color', new THREE.Float32BufferAttribute(maxItemCount * 3, 3));
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    clear() {
-        this.geometry.setDrawRange(0, 0);
-    }
-
-    setPoint(index, point, color, quaternion) {
-        if(index >= this.userData.maxItemCount) return;
-
-        const positionAttr = this.geometry.getAttribute('position');
-        const colorAttr = this.geometry.getAttribute('color');
-
-        for(var i = 0; i < point.length; i++)
-            positionAttr.array[3 * index + i] = point[i];
-        positionAttr.needsUpdate = true;
-
-        for(var i = 0; i < point.length; i++)
-            colorAttr.array[3 * index + i] = color.length > 0 ? color[i] : this.parent.userData.color[i % 3];
-        colorAttr.needsUpdate = true;
-
-        this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, index + 1));
-    }
-
-    update() {
-        this.geometry.computeBoundingBox();
-        this.geometry.computeBoundingSphere();
+        this.userData.pointsPerItem = 3;
+        this.initGeometry();
     }
 }
+
+mixin(DrawingObjectVisualTriangle, DrawingObjectVisualBufferGeometryMixin);
 
 class DrawingObject extends THREE.Group {
     static objectsByUid = {};
@@ -2073,8 +2005,12 @@ class DrawingObject extends THREE.Group {
         this.object;
     }
 
-    itemDataLength() {
-        return this.userData.itemType == 'line' ? 6 : 3;
+    pointsPerItem() {
+        if(this.userData.itemType == 'line')
+            return 2;
+        if(this.userData.itemType == 'triangle')
+            return 3;
+        return 1;
     }
 
     setUid(uid) {
@@ -2117,7 +2053,6 @@ class DrawingObject extends THREE.Group {
 
         this.userData.maxItemCount = maxItemCount;
         this.userData.writeIndex = 0;
-
     }
 
     setSize(size) {
@@ -2130,30 +2065,22 @@ class DrawingObject extends THREE.Group {
             this.userData.writeIndex = 0;
         }
 
-        const np = this.itemDataLength();
+        const itemLen = this.pointsPerItem() * 3;
 
-        if(points.length % np > 0)
-            throw `Points data size is not a multiple of ${np}`;
+        if(points.length % itemLen > 0)
+            throw `Points data size is not a multiple of ${itemLen}`;
 
-        const n = points.length / np;
+        const n = points.length / itemLen;
 
-        if(colors.length % 3 > 0)
-            throw `Color data size is not a multiple of 3`;
-        if(colors.length % n > 0)
-            throw `Color data size is not a multiple of ${n}`;
-
-        const nc = colors ? colors.length / n : 0;
+        if(colors.length != points.length)
+            throw `Colors data size does not match points data siize`;
 
         for(var j = 0; j < n; j++) {
             this.object.setPoint(
                 this.userData.writeIndex,
-                points.slice(j * np, (j + 1) * np),
-                colors
-                    ? colors.slice(j * nc, (j + 1) * nc)
-                    : null,
-                quaternions
-                    ? quaternions.slice(j * 4, (j + 1) * 4)
-                    : null
+                points.slice(j * itemLen, (j + 1) * itemLen),
+                colors.slice(j * itemLen, (j + 1) * itemLen),
+                quaternions.slice(j * 4, (j + 1) * 4)
             );
 
             this.userData.writeIndex++;
@@ -2163,7 +2090,7 @@ class DrawingObject extends THREE.Group {
                 this.userData.writeIndex = Math.min(this.userData.maxItemCount, this.userData.writeIndex);
         }
 
-        this.object.update();
+        this.object.updateGeometry();
     }
 }
 
