@@ -1882,6 +1882,7 @@ class DrawingObjectVisualDiscPoint extends DrawingObjectVisualInstancedMesh {
             new THREE.CircleGeometry(size, 16),
             new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
+                side: THREE.DoubleSide,
             }),
             maxItemCount
         );
@@ -1908,6 +1909,7 @@ class DrawingObjectVisualQuadPoint extends DrawingObjectVisualInstancedMesh {
             new THREE.PlaneGeometry(size, size),
             new THREE.MeshPhongMaterial({
                 color: new THREE.Color(1, 1, 1),
+                side: THREE.DoubleSide,
             }),
             maxItemCount
         );
