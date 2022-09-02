@@ -5,12 +5,10 @@ function sysCall_info()
 end
 
 function sysCall_init()
-    addOnPath=sim.getStringParam(sim.stringparam_addonpath)
-    addOnBaseName=addOnPath:match("^.+/(.+).lua$")
-    addOnDir=addOnPath:match("^(.+)/.*")
+    resourcesDir=sim.getStringParameter(sim.stringparam_resourcesdir)
 
     if not simWS then
-        sim.addLog(sim.verbosity_errors,'Add-on "'..addOnBaseName..'": the WS plugin is not available')
+        sim.addLog(sim.verbosity_errors,'the WS plugin is not available')
         return {cmd='cleanup'}
     end
 
@@ -38,7 +36,7 @@ function sysCall_init()
 
     sim.test('sim.mergeEvents',true)
     sim.test('sim.cborEvents',true)
-    
+
     sim.addLog(sim.verbosity_scriptinfos,'e.g. in your local web browser, type: http://127.0.0.1:'..tostring(wsPort))
 end
 
@@ -88,14 +86,14 @@ function onWSHTTP(server,connection,resource,data)
     local mainPage='threejsFrontend'
     local status,data=404,nil
     if resource=='/' or resource=='/'..mainPage..'.html' then
-        status,data=getFileContents(addOnDir..'/'..mainPage..'.html')
+        status,data=getFileContents(resourcesDir..'/'..mainPage..'.html')
         if status==200 then
             data=string.gsub(data,'const wsPort = 23020;','const wsPort = '..wsPort..';')
         end
     elseif resource=='/'..mainPage..'.js' then
-        status,data=getFileContents(addOnDir..'/'..mainPage..'.js')
+        status,data=getFileContents(resourcesDir..'/'..mainPage..'.js')
     elseif resource:sub(1,10)=='/3rdparty/' then
-        status,data=getFileContents(addOnDir..resource)
+        status,data=getFileContents(resourcesDir..resource)
     end
     if status==404 and resource~='/favicon.ico' then
         sim.addLog(sim.verbosity_errors,'resource not found: '..resource)
