@@ -1,11 +1,26 @@
 // run `git config --local core.hooksPath .githooks/`
 // to automatically bump this after each commit:
-const __REV__ = 227;
+const __REV__ = 254;
 
 const rad = Math.PI / 180;
 const deg = 180 / Math.PI;
 
 $('#about').text(`r${__REV__}`);
+
+window.location.hashObj = {};
+if(window.location.hash)
+    window.location.hashObj = JSON5.parse(window.location.hash.substr(1));
+
+const offline = !!window.location.hashObj.offline;
+
+const eventsEndpoint = window.location.hashObj.eventsEndpoint || {};
+const remoteApiEndpoint = window.location.hashObj.remoteApiEndpoint || {};
+eventsEndpoint.host = eventsEndpoint.host || window.location.hostname;
+eventsEndpoint.port = eventsEndpoint.port || wsPort;
+eventsEndpoint.codec = eventsEndpoint.codec || codec;
+remoteApiEndpoint.host = remoteApiEndpoint.host || window.location.hostname;
+remoteApiEndpoint.port = remoteApiEndpoint.port || 23050;
+remoteApiEndpoint.codec = remoteApiEndpoint.codec || codec;
 
 function mixin(target, source) {
     // ignore the Function-properties
@@ -80,11 +95,21 @@ class Settings {
         };
         this.events = {
             logging: false,
-            discardOutOfSequence: true,
-            warnOutOfSequence: true,
+            discardOutOfSequence: false,
+            bufferOutOfSequence: true,
+            warnOutOfSequence: false,
+            waitForGenesis: true,
         };
         this.shadows = {
             enabled: false,
+        };
+        this.hoverTool = {
+            timeoutMs: 500,
+            pick: false,
+        };
+        this.background = {
+            clearColor: 0x1f1f1f,
+            clearColorAlpha: 0.8,
         };
         if(!disableAutoWrite) {
             this.read();
@@ -134,9 +159,12 @@ class VisualizationStreamClient {
         this.host = host;
         this.port = port;
         this.codec = codec;
-        this.websocket = new ReconnectingWebSocket(`ws://${this.host}:${this.port}`);
         this.sessionId = '???';
         this.seq = -1;
+        this.eventBuffer = {};
+        this.receivedGenesisEvents = false;
+        if(offline) return;
+        this.websocket = new ReconnectingWebSocket(`ws://${this.host}:${this.port}`);
         if(codec == 'cbor') {
             this.websocket.binaryType = 'arraybuffer';
             this.websocket.onmessage = async (event) => this.handleEvents(CBOR.decode(await event.data.arrayBuffer()));
@@ -154,19 +182,30 @@ class VisualizationStreamClient {
     }
 
     handleEvent(eventData) {
-        if(eventData.event === 'appSession' && eventData.data.sessionId) {
-            if(this.sessionId !== eventData.data.sessionId) {
-                this.seq = -1;
-                this.sessionId = eventData.data.sessionId;
-            }
-            return;
+        if(eventData.event === 'genesisBegin') {
+            if(this.seq === -1 && !this.receivedGenesisEvents)
+                this.seq = eventData.seq - 1;
+            this.receivedGenesisEvents = true;
         }
 
-        if(eventData.seq !== undefined && eventData.seq <= this.seq && settings.events.discardOutOfSequence && settings.events.warnOutOfSequence) {
-            console.warn(`Discarded event with seq=${eventData.seq} (mine is ${this.seq})`);
+        var outOfSequence = (settings.events.waitForGenesis && !this.receivedGenesisEvents) ||
+            (this.seq !== -1 && eventData.seq !== undefined && eventData.seq !== (this.seq + 1));
+
+        if(outOfSequence && !settings.events.discardOutOfSequence && settings.events.warnOutOfSequence) {
+            console.warn(`Received event with seq=${eventData.seq} (was expecting seq=${this.seq+1})`, eventData);
         }
 
         if(settings.events.logging) {
+            if(eventData.seq !== undefined && this.seq >= 0) {
+                var gap = eventData.seq - this.seq;
+                if(gap > 1 && settings.events.discardOutOfSequence && settings.events.warnOutOfSequence) {
+                    var li = document.createElement('li');
+                    var txt = document.createTextNode(`warning: gap of ${gap-1} missing events!`);
+                    li.appendChild(txt);
+                    document.getElementById('log').appendChild(li);
+                }
+            }
+
             const eventInfo = (eventData) => {
                 return eventData.event;
             }
@@ -182,7 +221,7 @@ class VisualizationStreamClient {
             }
 
             var li = document.createElement('li');
-            if(eventData.seq !== undefined && eventData.seq <= this.seq)
+            if(eventData.seq !== undefined && eventData.seq <= this.seq && settings.events.discardOutOfSequence)
                 li.classList.add('rejected');
             var hdr = document.createElement('span');
             hdr.classList.add('event-header');
@@ -193,15 +232,31 @@ class VisualizationStreamClient {
             document.getElementById('log').appendChild(li);
         }
 
-        if(eventData.seq !== undefined && eventData.seq <= this.seq && settings.events.discardOutOfSequence) {
+        if(outOfSequence && settings.events.discardOutOfSequence) {
+            console.warn(`Discarded event with seq=${eventData.seq} (was expecting seq=${this.seq+1})`, eventData);
             return;
         }
 
-        if(this.dispatchEvent(eventData.event, eventData) == 0) {
-            console.warn(`No listeners for event "${eventData.event}"`, eventData);
+        if(outOfSequence && settings.events.bufferOutOfSequence) {
+            this.eventBuffer[eventData.seq] = eventData;
+            return;
         }
 
-        this.seq = eventData.seq;
+        const dispatch = (eventData) => {
+            if(this.dispatchEvent(eventData.event, eventData) == 0) {
+                console.warn(`No listeners for event "${eventData.event}"`, eventData);
+            }
+            this.seq = eventData.seq;
+        };
+
+        dispatch(eventData);
+
+        // see if there are any out-of-sequence events that can be dispatched:
+        while(this.eventBuffer[this.seq + 1] !== undefined) {
+            var pendingEvent = this.eventBuffer[this.seq + 1];
+            delete this.eventBuffer[this.seq + 1];
+            dispatch(pendingEvent);
+        }
     }
 }
 
@@ -986,6 +1041,8 @@ class Joint extends BaseObject {
             this.setJointDiameter(joint.diameter);
         if(joint.length !== undefined)
             this.setJointLength(joint.length);
+        if(joint.dependency !== undefined)
+            this.setJointDependency(joint.dependency);
     }
 
     setJointType(type) {
@@ -1040,6 +1097,10 @@ class Joint extends BaseObject {
     setJointLength(length) {
         this.userData.joint.length = length;
         this.visual?.setLength(length);
+    }
+
+    setJointDependency(dependency) {
+        this.userData.joint.dependency = dependency;
     }
 }
 
@@ -1363,6 +1424,12 @@ class Camera extends BaseObject {
             this.setCameraFrustumVisibility(camera.showFrustum);
         if(camera.remoteCameraMode !== undefined)
             this.setCameraRemoteCameraMode(camera.remoteCameraMode);
+        if(camera.allowTranslation !== undefined)
+            this.userData.enablePan = camera.allowTranslation;
+        if(camera.allowRotation !== undefined)
+            this.userData.enableRotate = camera.allowRotation;
+        if(camera.allowZoom !== undefined)
+            this.userData.enableZoom = camera.allowZoom;
 
         // XXX: deliver event to initially place the camera
         if(this.name == "DefaultCamera") {
@@ -1679,6 +1746,22 @@ class TriangleGeometry extends THREE.BufferGeometry {
 	}
 }
 
+class DrawingObjectSetOverlayMixin {
+    setOverlay(overlay) {
+        if(overlay) {
+            this.renderOrder = 999;
+            this.material.depthTest = false;
+            this.material.depthWrite = false;
+            this.onBeforeRender = function (renderer) { renderer.clearDepth(); };
+        } else {
+            this.renderOrder = 0;
+            this.material.depthTest = true;
+            this.material.depthWrite = true;
+            delete this.onBeforeRender;
+        }
+    }
+}
+
 class DrawingObjectVisualBufferGeometryMixin {
     initGeometry() {
         this.geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.userData.maxItemCount * 3 * this.userData.pointsPerItem, 3));
@@ -1691,6 +1774,9 @@ class DrawingObjectVisualBufferGeometryMixin {
     }
 
     updateGeometry() {
+        this.geometry.getAttribute('position').needsUpdate = true;
+        this.geometry.getAttribute('color').needsUpdate = true;
+        this.material.needsUpdate = true;
         this.geometry.computeBoundingBox();
         this.geometry.computeBoundingSphere();
     }
@@ -1705,15 +1791,17 @@ class DrawingObjectVisualBufferGeometryMixin {
 
         for(var i = 0; i < point.length; i++)
             positionAttr.array[ptsPerItem * 3 * index + i] = point[i];
-        positionAttr.needsUpdate = true;
+        //positionAttr.needsUpdate = true; // called later by updateGeometry()
 
         for(var i = 0; i < color.length; i++)
             colorAttr.array[ptsPerItem * 3 * index + i] = color[i];
-        colorAttr.needsUpdate = true;
+        //colorAttr.needsUpdate = true; // called later by updateGeometry()
 
         this.geometry.setDrawRange(0, Math.max(this.geometry.drawRange.count, ptsPerItem * (index + 1)));
     }
 }
+
+mixin(DrawingObjectVisualBufferGeometryMixin, DrawingObjectSetOverlayMixin);
 
 class DrawingObjectVisualPoint extends THREE.Points {
     constructor(maxItemCount, size) {
@@ -1798,6 +1886,7 @@ class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
         this.instanceMatrix.needsUpdate = true;
         if(this.instanceColor)
             this.instanceColor.needsUpdate = true;
+        this.material.needsUpdate = true;
     }
 
     setPoint(index, point, color, quaternion) {
@@ -1809,16 +1898,18 @@ class DrawingObjectVisualInstancedMesh extends THREE.InstancedMesh {
         var m = new THREE.Matrix4();
         m.compose(p, q, s);
         this.setMatrixAt(index, m);
-        this.instanceMatrix.needsUpdate = true;
+        //this.instanceMatrix.needsUpdate = true; // called later by updateGeometry()
 
         var c = new THREE.Color(...color);
         this.setColorAt(index, c);
-        this.instanceColor.needsUpdate = true;
+        //this.instanceColor.needsUpdate = true; // called later by updateGeometry()
 
         if(this.count <= index)
             this.count = index + 1;
     }
 }
+
+mixin(DrawingObjectVisualInstancedMesh, DrawingObjectSetOverlayMixin);
 
 class DrawingObjectVisualCubePoint extends DrawingObjectVisualInstancedMesh {
     constructor(maxItemCount, size) {
@@ -1980,6 +2071,8 @@ class DrawingObject extends THREE.Group {
             this.setCyclic(eventData.data.cyclic);
         if(eventData.data.type !== undefined)
             this.setItemType(eventData.data.type);
+        if(eventData.data.overlay !== undefined)
+            this.setOverlay(eventData.data.overlay);
         if(eventData.data.points !== undefined || eventData.data.clearPoints === true)
             this.setPoints(
                 eventData.data.points || [],
@@ -2003,6 +2096,10 @@ class DrawingObject extends THREE.Group {
 
         // invoke getter now:
         this.object;
+    }
+
+    setOverlay(overlay) {
+        this.object.setOverlay(overlay);
     }
 
     pointsPerItem() {
@@ -2075,8 +2172,9 @@ class DrawingObject extends THREE.Group {
         if(colors.length != points.length)
             throw `Colors data size does not match points data siize`;
 
+        var o = this.object;
         for(var j = 0; j < n; j++) {
-            this.object.setPoint(
+            o.setPoint(
                 this.userData.writeIndex,
                 points.slice(j * itemLen, (j + 1) * itemLen),
                 colors.slice(j * itemLen, (j + 1) * itemLen),
@@ -2136,12 +2234,18 @@ class BoxHelper extends THREE.LineSegments {
         for(var o of object.boundingBoxObjects) {
             if(o.userData.boundingBox === undefined)
                 continue;
+            if(o.userData.boundingBox.hsize === undefined)
+                continue;
             o.updateMatrixWorld();
-            const objBB = [o.userData.boundingBox.min, o.userData.boundingBox.max];
-            for(var i = 0; i < 2; i++) {
-                for(var j = 0; j < 2; j++) {
-                    for(var k = 0; k < 2; k++) {
-                        var v = new THREE.Vector3(objBB[i][0], objBB[j][1], objBB[k][2]);
+            for(const dx of [-1, 1]) {
+                for(const dy of [-1, 1]) {
+                    for(const dz of [-1, 1]) {
+                        var v = new THREE.Vector3(
+                            dx * o.userData.boundingBox.hsize[0],
+                            dy * o.userData.boundingBox.hsize[1],
+                            dz * o.userData.boundingBox.hsize[2]
+                        );
+                        v.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(...o.userData.boundingBox.pose)));
                         v = o.localToWorld(v);
                         v.applyMatrix4(modelBaseMatrixWorldInverse);
                         var a = v.toArray();
@@ -2321,6 +2425,15 @@ class SceneWrapper {
         return null;
     }
 
+    rayCast(camera, mousePos) {
+        if(mousePos.x < -1 || mousePos.x > 1 || mousePos.y < -1 || mousePos.y > 1) {
+            throw 'SceneWrapper.rayCast: x and y must be in normalized device coordinates (-1...+1)';
+        }
+        this.raycaster.layers.mask = camera.layers.mask;
+        this.raycaster.setFromCamera(mousePos, camera);
+        return this.raycaster.ray;
+    }
+
     pickObject(camera, mousePos, cond) {
         if(mousePos.x < -1 || mousePos.x > 1 || mousePos.y < -1 || mousePos.y > 1) {
             throw 'SceneWrapper.pickObject: x and y must be in normalized device coordinates (-1...+1)';
@@ -2338,13 +2451,16 @@ class SceneWrapper {
             // XXX end
             var obj = this.isObjectPickable(x.object);
             if(obj !== null && (cond === undefined || cond(obj))) {
+                if(obj instanceof PointCloud)
+                    continue;
                 return {
                     distance: x.distance,
                     point: x.point,
                     face: x.face,
                     faceIndex: x.faceIndex,
                     object: obj,
-                    originalObject: x.object
+                    originalObject: x.object,
+                    ray: {origin: this.raycaster.ray.origin, direction: this.raycaster.ray.direction},
                 };
             }
         }
@@ -2367,6 +2483,202 @@ class SceneWrapper {
 
 mixin(SceneWrapper, EventSourceMixin);
 
+class SelectSurfacePointTool {
+    constructor(sceneWrapper, view) {
+        this.sceneWrapper = sceneWrapper;
+        this.view = view;
+        this.enabled = false;
+        this.confirmed = false;
+
+        this.selectPointSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.01, 8, 4),
+            new THREE.MeshBasicMaterial({color: 0xff0000})
+        );
+        this.selectPointSphere.visible = false;
+        this.sceneWrapper.scene.add(this.selectPointSphere);
+
+        this.selectPointArrow = new THREE.ArrowHelper(
+            new THREE.Vector3(0, 0, 1),
+            new THREE.Vector3(0, 0, 0),
+            0.2,
+            0xff0000
+        );
+        this.selectPointArrow.visible = false;
+        this.sceneWrapper.scene.add(this.selectPointArrow);
+    }
+
+    enable() {
+        if(this.enabled) return;
+        this.enabled = true;
+        this.confirmed = false;
+        this.view.requestRender();
+    }
+
+    disable() {
+        if(!this.enabled) return;
+        this.enabled = false;
+        if(!this.confirmed) {
+            this.selectPointSphere.visible = false;
+            this.selectPointArrow.visible = false;
+        }
+        this.view.requestRender();
+    }
+
+    onRender(camera, mouse) {
+        if(!this.enabled) return true;
+        var pick = this.sceneWrapper.pickObject(camera, mouse.normPos);
+        if(pick === null) return true;
+        pick.originalObject.updateMatrixWorld();
+        this.selectPointSphere.position.copy(pick.point);
+        this.selectPointSphere.visible = true;
+        this.selectPointSphere.userData.ray = pick.ray;
+        // normal is local, convert it to global:
+        var normalMatrix = new THREE.Matrix3().getNormalMatrix(pick.originalObject.matrixWorld);
+        if(pick.face) {
+            var normal = pick.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+            this.selectPointArrow.setDirection(normal);
+        } else {
+            this.selectPointArrow.setDirection(new THREE.Vector3(0, 0, 1));
+        }
+        this.selectPointArrow.position.copy(pick.point);
+        this.selectPointArrow.visible = true;
+        return true;
+    }
+
+    onClick(event) {
+        if(!this.enabled) return true;
+
+        this.confirmed = true;
+        this.disable();
+
+        var p = new THREE.Vector3();
+        p.copy(this.selectPointSphere.position);
+
+        var q = new THREE.Quaternion();
+        this.selectPointArrow.getWorldQuaternion(q);
+
+        var r = this.selectPointSphere.userData.ray;
+
+        this.dispatchEvent('selectedPoint', {quaternion: q, position: p, ray: r});
+        return false;
+    }
+
+    onMouseMove(event) {
+        if(this.enabled)
+            this.view.requestRender();
+        return true;
+    }
+}
+
+mixin(SelectSurfacePointTool, EventSourceMixin);
+
+class RayCastTool {
+    constructor(sceneWrapper, view) {
+        this.sceneWrapper = sceneWrapper;
+        this.view = view;
+        this.enabled = false;
+        this.ray = {origin: [0, 0, 0], direction: [0, 0, -1]};
+    }
+
+    enable() {
+        if(this.enabled) return;
+        this.enabled = true;
+        this.view.requestRender();
+        notifyEvent({event: 'rayCastEnter'});
+        this.onRender(this.view.selectedCamera, this.view.mouse);
+        this.onMouseMove();
+    }
+
+    disable() {
+        if(!this.enabled) return;
+        this.enabled = false;
+        this.view.requestRender();
+        notifyEvent({event: 'rayCastLeave'});
+    }
+
+    onRender(camera, mouse) {
+        if(!this.enabled) return true;
+        var ray = this.sceneWrapper.rayCast(camera, mouse.normPos);
+        this.ray.origin = ray.origin.toArray();
+        this.ray.direction = ray.direction.toArray();
+        return true;
+    }
+
+    onClick(event) {
+        if(!this.enabled) return true;
+
+        notifyEvent({
+            event: 'rayCast',
+            data: {
+                ray: this.ray,
+                eventSource: 'click',
+            },
+        });
+
+        this.disable();
+        return false;
+    }
+
+    onMouseMove(event) {
+        if(this.enabled) {
+            this.view.requestRender();
+            notifyEvent({
+                event: 'rayCast',
+                data: {
+                    ray: this.ray,
+                    eventSource: 'mousemove',
+                },
+            });
+        }
+        return true;
+    }
+}
+
+mixin(RayCastTool, EventSourceMixin);
+
+class HoverTool {
+    constructor(sceneWrapper, view) {
+        this.sceneWrapper = sceneWrapper;
+        this.view = view;
+        this.timeoutId = null;
+    }
+
+    onMouseMove(event, camera, mouse) {
+        if(this.timeoutId) {
+            window.clearTimeout(this.timeoutId);
+            this.timeoutId = null;
+        }
+
+        if(settings.hoverTool.timeoutMs >= 0) {
+            this.timeoutId = window.setTimeout(() => {
+                var ray = this.sceneWrapper.rayCast(camera, mouse.normPos);
+                var eventData = {
+                    ray: {
+                        origin: ray.origin.toArray(),
+                        direction: ray.direction.toArray()
+                    },
+                    eventSource: 'mouseover',
+                };
+                if(settings.hoverTool.pick) {
+                    var pick = this.sceneWrapper.pickObject(camera, mouse.normPos);
+                    if(pick !== null) {
+                        eventData.pick = {
+                            distance: pick.distance,
+                            point: pick.point.toArray(),
+                            object: pick.object.userData.uid,
+                        };
+                    }
+                }
+                notifyEvent({event: 'rayCast', data: eventData});
+            }, settings.hoverTool.timeoutMs);
+        }
+
+        return true;
+    }
+}
+
+mixin(HoverTool, EventSourceMixin);
+
 function qRot(q, axis, angle) {
     var m = new THREE.Matrix4();
     m.makeRotationAxis(new THREE.Vector3(...axis), angle);
@@ -2381,11 +2693,12 @@ class View {
     constructor(viewCanvas, sceneWrapper) {
         this.viewCanvas = viewCanvas
         this.sceneWrapper = sceneWrapper;
-        this.renderer = new THREE.WebGLRenderer({canvas: this.viewCanvas, alpha: true});
+        this.renderer = new THREE.WebGLRenderer({canvas: this.viewCanvas, alpha: true,preserveDrawingBuffer: true});
         this.renderer.shadowMap.enabled = settings.shadows.enabled;
         this.renderer.setPixelRatio(window.devicePixelRatio);
         this.renderer.setSize(window.innerWidth, window.innerHeight);
-
+        if(settings.background.clearColor)
+            this.renderer.setClearColor(settings.background.clearColor, settings.background.clearColorAlpha || 1);
         this.renderRequested = false;
 
         this.perspectiveCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -2408,6 +2721,10 @@ class View {
         this.bboxHelper = new BoxHelper(0xffffff);
         this.bboxHelper.visible = false;
         this.sceneWrapper.scene.add(this.bboxHelper);
+
+        this.selectPointTool = new SelectSurfacePointTool(this.sceneWrapper, this);
+        this.rayCastTool = new RayCastTool(this.sceneWrapper, this);
+        this.hoverTool = new HoverTool(this.sceneWrapper, this);
 
         this.selectedObject = null;
 
@@ -2491,6 +2808,10 @@ class View {
             delete this.perspectiveCamera.needsProjectionMatrixUpdate;
             this.perspectiveCamera.updateProjectionMatrix();
         }
+
+        orbitControlsWrapper.orbitControls.enablePan = camera.userData.enablePan ?? true;
+        orbitControlsWrapper.orbitControls.enableRotate = camera.userData.enableRotate ?? true;
+        orbitControlsWrapper.orbitControls.enableZoom = camera.userData.enableZoom ?? true;
 
         this.dispatchEvent('selectedCameraChanged', {});
     }
@@ -2627,12 +2948,24 @@ class View {
     }
 
     onClick(event) {
+        if(!this.rayCastTool.onClick(event))
+            return;
+        if(!this.selectPointTool.onClick(event))
+            return;
+
         var pick = this.sceneWrapper.pickObject(this.selectedCamera, this.mouse.normPos, (o) => o.userData.selectable !== false);
         view.setSelectedObject(pick === null ? null : pick.object, true);
     }
 
     onMouseMove(event) {
         this.readMousePos(event);
+
+        if(!this.rayCastTool.onMouseMove(event))
+            return;
+        if(!this.selectPointTool.onMouseMove(event))
+            return;
+        if(!this.hoverTool.onMouseMove(event, this.selectedCamera, this.mouse))
+            return;
     }
 
     requestRender() {
@@ -2644,6 +2977,11 @@ class View {
         this.renderRequested = false;
 
         this.updateBoundingBoxIfNeeded();
+
+        if(!this.rayCastTool.onRender(this.selectedCamera, this.mouse))
+            return;
+        if(!this.selectPointTool.onRender(this.selectedCamera, this.mouse))
+            return;
 
         // orient camera-facing objects:
         for(var o of this.sceneWrapper.cameraFacingObjects)
@@ -2690,6 +3028,7 @@ class AxesView {
 class OrbitControlsWrapper {
     constructor(camera, renderer) {
         this.orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+        this.orbitControls.minDistance = 0.5;
     }
 }
 
@@ -2812,13 +3151,14 @@ class TransformControlsWrapper {
     updateTargetPosition() {
         var clone = this.transformControls.object;
         var obj = clone.userData.original;
-        /* (original object will change as the result of synchronization)
-        obj.position.copy(clone.position);
-        obj.quaternion.copy(clone.quaternion);
-        */
-        var p = clone.position.toArray();
-        var q = clone.quaternion.toArray();
-        sim.setObjectPose(obj.userData.handle, sim.handle_parent, p.concat(q));
+        if(offline) {
+            obj.position.copy(clone.position);
+            obj.quaternion.copy(clone.quaternion);
+        } else {
+            var p = clone.position.toArray();
+            var q = clone.quaternion.toArray();
+            sim.setObjectPose(obj.userData.handle, sim.handle_parent, p.concat(q));
+        }
     }
 
     detach() {
@@ -3000,7 +3340,7 @@ class ObjTree {
 mixin(ObjTree, EventSourceMixin);
 
 function info(text) {
-    $('#info').text(text);
+    $('#info').html(text);
     if(!text) $('#info').hide();
     else $('#info').show();
 }
@@ -3021,7 +3361,8 @@ var simulationRunning = false;
 
 var sceneWrapper = new SceneWrapper();
 
-const visualizationStreamClient = new VisualizationStreamClient(window.location.hostname, wsPort, codec);
+const visualizationStreamClient = new VisualizationStreamClient(eventsEndpoint.host, eventsEndpoint.port, eventsEndpoint.codec);
+visualizationStreamClient.addEventListener('noop', () => {});
 visualizationStreamClient.addEventListener('objectAdded', onObjectAdded);
 visualizationStreamClient.addEventListener('objectChanged', onObjectChanged);
 visualizationStreamClient.addEventListener('objectRemoved', onObjectRemoved);
@@ -3031,6 +3372,9 @@ visualizationStreamClient.addEventListener('drawingObjectRemoved', onDrawingObje
 visualizationStreamClient.addEventListener('environmentChanged', onEnvironmentChanged);
 visualizationStreamClient.addEventListener('appSettingsChanged', onAppSettingsChanged);
 visualizationStreamClient.addEventListener('simulationChanged', onSimulationChanged);
+visualizationStreamClient.addEventListener('appSession', onAppSession);
+visualizationStreamClient.addEventListener('genesisBegin', () => {});
+visualizationStreamClient.addEventListener('genesisEnd', () => {});
 
 var view = new View(document.querySelector('#view'), sceneWrapper);
 view.addEventListener('selectedObjectChanged', (event) => {
@@ -3045,6 +3389,40 @@ view.addEventListener('selectedObjectChanged', (event) => {
         transformControlsWrapper.attach(event.current);
 
     view.requestRender();
+
+    notifyEvent({
+        event: 'selectedObjectChanged',
+        uid: event.current ? event.current.userData.uid : -1,
+    });
+});
+
+var lastPickedPoint = {
+    isSet: false,
+    position: new THREE.Vector3(),
+    quaternion: new THREE.Quaternion(),
+};
+
+view.selectPointTool.addEventListener('selectedPoint', (event) => {
+    lastPickedPoint.isSet = true;
+    lastPickedPoint.position.copy(event.position);
+    lastPickedPoint.quaternion.copy(event.quaternion);
+    transformControlsWrapper.disable();
+    if(view.selectedObject !== null) {
+        transformControlsWrapper.detach();
+    }
+    notifyEvent({
+        event: 'pointPick',
+        data: {
+            pose: [
+                ...lastPickedPoint.position.toArray(),
+                ...lastPickedPoint.quaternion.toArray(),
+            ],
+            ray: {
+                origin: event.ray.origin.toArray(),
+                direction: event.ray.direction.toArray(),
+            },
+        },
+    });
 });
 
 view.addEventListener('selectedCameraChanged', () => {
@@ -3125,17 +3503,63 @@ transformControlsWrapper.transformControls.addEventListener('change', (event) =>
     view.requestRender();
 });
 
-var remoteApiClient = new RemoteAPIClient(window.location.hostname, 23050, 'cbor', {createWebSocket: url => new ReconnectingWebSocket(url)});
-var sim = null;
-remoteApiClient.websocket.onOpen.addListener(() => {
-    remoteApiClient.getObject('sim').then((_sim) => {
-        sim = _sim;
+if(!offline) {
+    var remoteApiClient = new RemoteAPIClient(remoteApiEndpoint.host, remoteApiEndpoint.port, remoteApiEndpoint.codec, {createWebSocket: url => new ReconnectingWebSocket(url)});
+    var sim = null;
+    remoteApiClient.websocket.onOpen.addListener(() => {
+        remoteApiClient.getObject('sim').then((_sim) => {
+            sim = _sim;
+        });
     });
-});
-remoteApiClient.websocket.open();
+    remoteApiClient.websocket.open();
+}
+
+var notifyEventFunc = 'event'
+var notifyEventTarget = '/eventSink'
+
+async function notifyEvent(eventData) {
+    if(offline) return;
+    try {
+        await sim.callScriptFunction(`${notifyEventFunc}@${notifyEventTarget}`, sim.scripttype_customizationscript, eventData);
+    } catch(error) {
+    }
+}
 
 var objTree = new ObjTree(sceneWrapper, $('#objtree'));
 objTree.addEventListener('itemClicked', onTreeItemSelected);
+
+class ObjectSetObserver {
+    constructor(sceneWrapper, predicate, scanInterval) {
+        this.sceneWrapper = sceneWrapper
+        this.predicate = predicate
+        this._scanInterval = setInterval(() => this.scan(), scanInterval);
+        this.previousSet = new Set([]);
+    }
+
+    check(o) {
+        return this.predicate(o);
+    }
+
+    getAll() {
+        var all = {};
+        this.sceneWrapper.scene.traverse((o) => {
+            if(this.check(o))
+                all[o.userData.uid] = o;
+        });
+        return all;
+    }
+
+    scan() {
+        var all = this.getAll();
+        var set = new Set(Object.keys(all));
+        if(set.size != this.previousSet.size || ![...set].every(uid => this.previousSet.has(uid))) {
+            this.dispatchEvent('changed', all);
+            this.previousSet = set;
+        }
+    }
+}
+
+mixin(ObjectSetObserver, EventSourceMixin);
 
 function render() {
     view.requestRender();
@@ -3173,6 +3597,9 @@ function onObjectChanged(eventData) {
         objTree.requestUpdate();
 
     obj.update(eventData);
+
+    if(obj === view.selectedObject)
+        showInfoIfPresent(obj);
 
     if(view.isPartOfSelection(obj) || view.selectedObject?.ancestorObjects?.includes(obj)) {
         view.requestRender(); view.render(); // XXX: without this, bbox would lag behind
@@ -3246,6 +3673,13 @@ function onSimulationChanged(eventData) {
     render();
 }
 
+function onAppSession(eventData) {
+    if(eventData.data.sessionId && visualizationStreamClient.sessionId !== eventData.data.sessionId) {
+        //visualizationStreamClient.seq = -1; // not needed anymore, since events are always contiguous
+        visualizationStreamClient.sessionId = eventData.data.sessionId;
+    }
+}
+
 function toggleObjTree() {
     $("#objtreeBG").toggle();
 }
@@ -3255,6 +3689,8 @@ function toggleDebugInfo() {
 }
 
 function cancelCurrentMode() {
+    view.rayCastTool.disable();
+    view.selectPointTool.disable();
     transformControlsWrapper.disable();
     if(view.selectedObject !== null) {
         transformControlsWrapper.detach();
@@ -3262,6 +3698,8 @@ function cancelCurrentMode() {
 }
 
 function setTransformMode(mode, space) {
+    view.rayCastTool.disable();
+    view.selectPointTool.disable();
     transformControlsWrapper.enable();
     transformControlsWrapper.setMode(mode);
     transformControlsWrapper.setSpace(space);
@@ -3286,6 +3724,29 @@ function setTransformSnap(enabled) {
     }
 }
 
+function setScreenSpacePanning(enabled) {
+    orbitControlsWrapper.orbitControls.screenSpacePanning = enabled;
+    orbitControlsWrapper.orbitControls.update();
+}
+
+function setPickPointMode() {
+    lastPickedPoint.isSet = false;
+    transformControlsWrapper.detach();
+    view.rayCastTool.disable();
+    view.selectPointTool.enable();
+}
+
+function setRayCastMode() {
+    lastPickedPoint.isSet = false;
+    transformControlsWrapper.detach();
+    view.rayCastTool.enable();
+    view.selectPointTool.disable();
+}
+
+function toggleGui() {
+    $('#gui').toggle();
+}
+
 function toggleLog() {
     $('#log').toggle();
 }
@@ -3296,8 +3757,10 @@ const keyMappings = {
     Escape_down: e => cancelCurrentMode(),
     KeyT_down:   e => setTransformMode('translate', e.shiftKey ? 'local' : 'world'),
     KeyR_down:   e => setTransformMode('rotate', e.shiftKey ? 'local' : 'world'),
-    ShiftLeft:   e => setTransformSnap(e.type === 'keyup'),
-    ShiftRight:  e => setTransformSnap(e.type === 'keyup'),
+    ShiftLeft:   e => {setTransformSnap(e.type === 'keyup'); setScreenSpacePanning(e.type === 'keyup');},
+    ShiftRight:  e => {setTransformSnap(e.type === 'keyup'); setScreenSpacePanning(e.type === 'keyup');},
+    KeyP_down:   e => e.shiftKey ? setPickPointMode() : setRayCastMode(),
+    KeyG_down:   e => toggleGui(),
     KeyL_down:   e => toggleLog(),
 };
 
