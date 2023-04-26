@@ -3615,7 +3615,7 @@ function onObjectChanged(eventData) {
     obj.update(eventData);
 
     if(view.isPartOfSelection(obj) || view.selectedObject?.ancestorObjects?.includes(obj)) {
-        view.requestRender(); view.render(); // XXX: without this, bbox would lag behind
+        view.requestRender(); // view.render(); // with view.render(), rendering of model bbos is very slow // XXX: without this, bbox would lag behind
         view.requestBoundingBoxUpdate();
     }
 
