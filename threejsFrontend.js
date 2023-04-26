@@ -1,6 +1,6 @@
 // run `git config --local core.hooksPath .githooks/`
 // to automatically bump this after each commit:
-const __REV__ = 254;
+const __REV__ = 255;
 
 const rad = Math.PI / 180;
 const deg = 180 / Math.PI;
@@ -73,7 +73,6 @@ class Settings {
                 boundingBoxSolidOpacity: 0.0,
                 boundingBoxSolidSide: THREE.BackSide,
                 boundingBoxOnTop: false,
-                boundingBoxLocal: false,
                 boundingBoxModelDashed: false,
                 boundingBoxModelSolidOpacity: 0.15,
                 boundingBoxModelSolidSide: THREE.FrontSide,
@@ -2226,11 +2225,23 @@ class BoxHelper extends THREE.LineSegments {
         if(object === null)
             return;
         var bb = [[Infinity, Infinity, Infinity], [-Infinity, -Infinity, -Infinity]];
+        var modelBaseMatrixWorld = new THREE.Matrix4(); // identity
         var modelBaseMatrixWorldInverse = new THREE.Matrix4(); // identity
-        if(object && settings.selection.style.boundingBoxLocal) {
-            object.updateMatrixWorld();
-            modelBaseMatrixWorldInverse = object.matrixWorld.clone().invert();
+
+        object.updateMatrixWorld();
+        modelBaseMatrixWorld = object.matrixWorld.clone();
+        if(object.userData.boundingBox !== undefined) {
+            const pose = object.userData.boundingBox.pose;
+            modelBaseMatrixWorld.multiply(
+                new THREE.Matrix4().compose(
+                    new THREE.Vector3(...pose.slice(0, 3)),
+                    new THREE.Quaternion(...pose.slice(3)),
+                    new THREE.Vector3(1, 1, 1),
+                )
+            );
         }
+        modelBaseMatrixWorldInverse = modelBaseMatrixWorld.clone().invert();
+
         for(var o of object.boundingBoxObjects) {
             if(o.userData.boundingBox === undefined)
                 continue;
@@ -2245,7 +2256,13 @@ class BoxHelper extends THREE.LineSegments {
                             dy * o.userData.boundingBox.hsize[1],
                             dz * o.userData.boundingBox.hsize[2]
                         );
-                        v.applyMatrix4(new THREE.Matrix4().makeRotationFromQuaternion(new THREE.Quaternion(...o.userData.boundingBox.pose)));
+                        v.applyMatrix4(
+                            new THREE.Matrix4().compose(
+                                new THREE.Vector3(...o.userData.boundingBox.pose.slice(0, 3)),
+                                new THREE.Quaternion(...o.userData.boundingBox.pose.slice(3)),
+                                new THREE.Vector3(1, 1, 1),
+                            )
+                        );
                         v = o.localToWorld(v);
                         v.applyMatrix4(modelBaseMatrixWorldInverse);
                         var a = v.toArray();
@@ -2279,10 +2296,9 @@ class BoxHelper extends THREE.LineSegments {
         const dash = settings.selection.style.boundingBoxModelDashed;
         this.material.dashSize = dash && object.userData.modelBase ? 0.005 : 1000;
         this.material.gapSize = dash && object.userData.modelBase ? 0.005 : 0;
-        if(settings.selection.style.boundingBoxLocal)
-            this.matrix.copy(object.matrixWorld);
-        else
-            this.matrix.copy(new THREE.Matrix4());
+
+        this.matrix.copy(modelBaseMatrixWorld);
+
         const idxMinMax = [1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0];
         var p = [];
         for(var j = 0; j < idxMinMax.length; j++)
