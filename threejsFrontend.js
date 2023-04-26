@@ -1,6 +1,6 @@
 // run `git config --local core.hooksPath .githooks/`
 // to automatically bump this after each commit:
-const __REV__ = 255;
+const __REV__ = 256;
 
 const rad = Math.PI / 180;
 const deg = 180 / Math.PI;
@@ -3613,9 +3613,6 @@ function onObjectChanged(eventData) {
         objTree.requestUpdate();
 
     obj.update(eventData);
-
-    if(obj === view.selectedObject)
-        showInfoIfPresent(obj);
 
     if(view.isPartOfSelection(obj) || view.selectedObject?.ancestorObjects?.includes(obj)) {
         view.requestRender(); view.render(); // XXX: without this, bbox would lag behind
