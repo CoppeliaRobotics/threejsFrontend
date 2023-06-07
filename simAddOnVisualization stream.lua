@@ -1,3 +1,5 @@
+sim=require'sim'
+
 function sysCall_info()
     autoStart=sim.getNamedBoolParam('visualizationStream.autoStart')
     if autoStart==nil then autoStart=false end
@@ -5,6 +7,11 @@ function sysCall_info()
 end
 
 function sysCall_init()
+    simWS=require'simWS'
+    cbor=require'org.conman.cbor'
+    base64=require'base64'
+    url=require'socket.url'
+
     resourcesDir=sim.getStringParameter(sim.stringparam_resourcesdir)
 
     if not simWS then
@@ -29,10 +36,6 @@ function sysCall_init()
     simWS.setMessageHandler(wsServer,'onWSMessage')
     simWS.setHTTPHandler(wsServer,'onWSHTTP')
     wsClients={}
-
-    cbor=require('org.conman.cbor')
-    base64=require('base64')
-    url=require('socket.url')
 
     sim.test('sim.mergeEvents',true)
     sim.test('sim.cborEvents',true)
