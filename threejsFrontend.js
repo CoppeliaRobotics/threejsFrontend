@@ -1,11 +1,7 @@
-// run `git config --local core.hooksPath .githooks/`
-// to automatically bump this after each commit:
-const __REV__ = 256;
-
 const rad = Math.PI / 180;
 const deg = 180 / Math.PI;
 
-$('#about').text(`r${__REV__}`);
+//$('#about').text(`r${__REV__}`);
 
 window.location.hashObj = {};
 if(window.location.hash)
@@ -112,6 +108,9 @@ class Settings {
         this.background = {
             clearColor: 0x1f1f1f,
             clearColorAlpha: 0.8,
+        };
+        this.camera = {
+            autoLocal: true,
         };
         if(!disableAutoWrite) {
             this.read();
@@ -1367,16 +1366,62 @@ class CameraVisual extends BaseVisual {
     }
 }
 
+class LocalCamera extends THREE.PerspectiveCamera {
+    constructor(sceneWrapper) {
+        super(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        this.cameraObject = this;
+        this.userData.type = 'camera';
+        this.userData.uid = -1000;
+        this.name = '<<< Local camera >>>';
+        this.nameWithOrder = this.name;
+        this.layers.mask = 255;
+
+        window.addEventListener('resize', () => {
+            this.cameraObject.aspect = window.innerWidth / window.innerHeight;
+            this.cameraObject.updateProjectionMatrix();
+        });
+    }
+}
+
 class Camera extends BaseObject {
     constructor(sceneWrapper) {
         super(sceneWrapper);
         this.userData.type = 'camera';
+
+        window.addEventListener('resize', () => {
+            this.cameraObject.aspect = window.innerWidth / window.innerHeight;
+            this.cameraObject.updateProjectionMatrix();
+        });
     }
 
     init() {
         super.init();
         this.visual;
         this.frustumSegments;
+    }
+
+    get cameraObject() {
+        for(var c of this.children) {
+            if(c instanceof THREE.PerspectiveCamera) return c;
+            if(c instanceof THREE.OrthographicCamera) return c;
+        }
+
+        if(this.userData.perspectiveMode === undefined)
+            throw 'Cannot construct a Camera without perspectiveMode set';
+
+        if(this.userData.perspectiveMode)
+            var cameraObject = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+        else
+            var cameraObject = new THREE.OrthographicCamera(window.innerWidth / - 2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / - 2, 0.1, 1000);
+        cameraObject.name = '';
+        cameraObject.userData.type = 'cameraObject';
+        cameraObject.position.set(0, 0, 0);
+        cameraObject.quaternion.set(0, 1, 0, 0);
+        cameraObject.layers.mask = 255;
+        this.add(cameraObject);
+
+        this.isPerspectiveCamera = cameraObject instanceof THREE.PerspectiveCamera;
+        this.isOrthographicCamera = cameraObject instanceof THREE.OrthographicCamera;
     }
 
     get visual() {
@@ -1421,24 +1466,16 @@ class Camera extends BaseObject {
     }
 
     setCamera(camera) {
-        var aspectRatio = window.innerWidth / window.innerHeight;
-        this.userData.aspectRatio = aspectRatio;
         if(camera.perspectiveMode !== undefined)
-            this.userData.perspective = camera.perspectiveMode;
+            this.setCameraPerspectiveMode(camera.perspectiveMode);
         if(camera.viewAngle !== undefined)
-            this.userData.fov = camera.viewAngle * 180 / Math.PI;
-        if(camera.orthoSize !== undefined) {
-            var width = camera.orthoSize;
-            var height = camera.orthoSize / aspectRatio;
-            this.userData.left = width / 2;
-            this.userData.right = -width / 2;
-            this.userData.top = height / 2;
-            this.userData.bottom = -height / 2;
-        }
+            this.setCameraFOV(camera.viewAngle);
+        if(camera.orthoSize !== undefined)
+            this.setCameraOrthoSize(camera.orthoSize);
         if(camera.nearClippingPlane !== undefined)
-            this.userData.near = camera.nearClippingPlane;
+            this.setCameraNear(camera.nearClippingPlane);
         if(camera.farClippingPlane !== undefined)
-            this.userData.far = camera.farClippingPlane;
+            this.setCameraFar(camera.farClippingPlane);
         if(camera.color !== undefined)
             this.setCameraColor(camera.color);
         if(camera.colors !== undefined)
@@ -1447,20 +1484,45 @@ class Camera extends BaseObject {
             this.setCameraFrustumVectors(camera.frustumVectors);
         if(camera.showFrustum !== undefined)
             this.setCameraFrustumVisibility(camera.showFrustum);
-        if(camera.remoteCameraMode !== undefined)
-            this.setCameraRemoteCameraMode(camera.remoteCameraMode);
         if(camera.allowTranslation !== undefined)
             this.userData.enablePan = camera.allowTranslation;
         if(camera.allowRotation !== undefined)
             this.userData.enableRotate = camera.allowRotation;
         if(camera.allowZoom !== undefined)
             this.userData.enableZoom = camera.allowZoom;
+    }
 
-        // XXX: deliver event to initially place the camera
-        if(this.name == "DefaultCamera") {
-            view.setCameraParams(this);
-            view.setCameraPose(this.getAbsolutePose());
-        }
+    setCameraPerspectiveMode(perspectiveMode) {
+        if(this.userData.perspectiveMode !== undefined)
+            throw 'Camera perspectiveMode cannot be changed after creation';
+        this.userData.perspectiveMode = perspectiveMode;
+        this.cameraObject;
+    }
+
+    setCameraFOV(fovRadians) {
+        this.cameraObject.fov = fovRadians * 180 / Math.PI;
+        this.cameraObject.updateProjectionMatrix();
+    }
+
+    setCameraOrthoSize(orthoSize) {
+        var aspectRatio = window.innerWidth / window.innerHeight;
+        var width = orthoSize;
+        var height = orthoSize / aspectRatio;
+        this.cameraObject.left = width / 2;
+        this.cameraObject.right = -width / 2;
+        this.cameraObject.top = height / 2;
+        this.cameraObject.bottom = -height / 2;
+        this.cameraObject.updateProjectionMatrix();
+    }
+
+    setCameraNear(x) {
+        this.cameraObject.near = x;
+        this.cameraObject.updateProjectionMatrix();
+    }
+
+    setCameraFar(x) {
+        this.cameraObject.far = x;
+        this.cameraObject.updateProjectionMatrix();
     }
 
     setCameraColor(color) {
@@ -1510,11 +1572,6 @@ class Camera extends BaseObject {
 
     setCameraFrustumVisibility(show) {
         this.frustumSegments.visible = show;
-    }
-
-    setCameraRemoteCameraMode(mode) {
-        // 0=free, 1=slave, 2=master
-        this.userData.remoteCameraMode = mode;
     }
 }
 
@@ -2472,20 +2529,26 @@ class SceneWrapper {
     }
 
     rayCast(camera, mousePos) {
+        if(camera.cameraObject === undefined) {
+            throw 'SceneWrapper.rayCast: camera must be a Camera or LocalCamera instance';
+        }
         if(mousePos.x < -1 || mousePos.x > 1 || mousePos.y < -1 || mousePos.y > 1) {
             throw 'SceneWrapper.rayCast: x and y must be in normalized device coordinates (-1...+1)';
         }
-        this.raycaster.layers.mask = camera.layers.mask;
-        this.raycaster.setFromCamera(mousePos, camera);
+        this.raycaster.layers.mask = camera.cameraObject.layers.mask;
+        this.raycaster.setFromCamera(mousePos, camera.cameraObject);
         return this.raycaster.ray;
     }
 
     pickObject(camera, mousePos, cond) {
+        if(camera.cameraObject === undefined) {
+            throw 'SceneWrapper.pickObject: camera must be a Camera or LocalCamera instance';
+        }
         if(mousePos.x < -1 || mousePos.x > 1 || mousePos.y < -1 || mousePos.y > 1) {
             throw 'SceneWrapper.pickObject: x and y must be in normalized device coordinates (-1...+1)';
         }
-        this.raycaster.layers.mask = camera.layers.mask;
-        this.raycaster.setFromCamera(mousePos, camera);
+        this.raycaster.layers.mask = camera.cameraObject.layers.mask;
+        this.raycaster.setFromCamera(mousePos, camera.cameraObject);
         const intersects = this.raycaster.intersectObjects(this.scene.children, true);
         for(let i = 0; i < intersects.length; i++) {
             var x = intersects[i];
@@ -2725,16 +2788,6 @@ class HoverTool {
 
 mixin(HoverTool, EventSourceMixin);
 
-function qRot(q, axis, angle) {
-    var m = new THREE.Matrix4();
-    m.makeRotationAxis(new THREE.Vector3(...axis), angle);
-    var qflip = new THREE.Quaternion();
-    qflip.setFromRotationMatrix(m);
-    var q_ = new THREE.Quaternion(...q);
-    q_.multiply(qflip);
-    return q_.toArray();
-}
-
 class View {
     constructor(viewCanvas, sceneWrapper) {
         this.viewCanvas = viewCanvas
@@ -2747,21 +2800,12 @@ class View {
             this.renderer.setClearColor(settings.background.clearColor, settings.background.clearColorAlpha || 1);
         this.renderRequested = false;
 
-        this.perspectiveCamera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
-        this.perspectiveCamera.name = 'User camera';
-        this.perspectiveCamera.userData.type = 'camera';
-        this.perspectiveCamera.position.set(1.12, -1.9, 1.08);
-        this.perspectiveCamera.rotation.set(1.08, 0.64, 0.31);
-        this.perspectiveCamera.layers.mask = 255;
+        this.defaultCamera = new LocalCamera();
+        this.defaultCamera.position.set(1.12, -1.9, 1.08);
+        this.defaultCamera.quaternion.set(-0.21233689785003662, 0.7820487022399902, 0.5654570460319519, -0.15352927148342133);
+        this.sceneWrapper.scene.add(this.defaultCamera);
 
-        this.orthographicCamera = new THREE.OrthographicCamera(window.innerWidth / - 2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / - 2, 1, 1000);
-        this.orthographicCamera.name = 'User camera';
-        this.orthographicCamera.userData.type = 'camera';
-        this.orthographicCamera.position.set(1.12, -1.9, 1.08);
-        this.orthographicCamera.rotation.set(1.08, 0.64, 0.31);
-        this.orthographicCamera.layers.mask = 255;
-
-        this.selectedCamera = this.perspectiveCamera;
+        this.selectedCamera = this.defaultCamera;
 
         this.bboxNeedsUpdating = false;
         this.bboxHelper = new BoxHelper(0xffffff);
@@ -2793,10 +2837,10 @@ class View {
 
         this.composer = new THREE.EffectComposer(this.renderer);
 
-        this.renderPass = new THREE.RenderPass(this.sceneWrapper.scene, this.selectedCamera);
+        this.renderPass = new THREE.RenderPass(this.sceneWrapper.scene, this.selectedCamera.cameraObject);
         this.composer.addPass(this.renderPass);
 
-        this.outlinePass = new THREE.OutlinePass(new THREE.Vector2(window.innerWidth, window.innerHeight), this.sceneWrapper.scene, this.selectedCamera);
+        this.outlinePass = new THREE.OutlinePass(new THREE.Vector2(window.innerWidth, window.innerHeight), this.sceneWrapper.scene, this.selectedCamera.cameraObject);
         this.outlinePass.visibleEdgeColor.set(0x0000ff);
         this.outlinePass.hiddenEdgeColor.set(0x0000ff);
         this.outlinePass.edgeGlow = 0;
@@ -2804,13 +2848,6 @@ class View {
         this.outlinePass.edgeStrength = 5;
         this.outlinePass.pulsePeriod = 0;
         this.composer.addPass(this.outlinePass);
-
-        window.addEventListener('resize', () => {
-            for(var camera of [this.perspectiveCamera, this.orthographicCamera]) {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-            }
-        });
 
         window.addEventListener('resize', () => {
             var w = window.innerWidth;
@@ -2821,68 +2858,60 @@ class View {
         });
     }
 
-    setCameraParams(camera) {
-        if(camera.userData.near !== undefined && camera.userData.far !== undefined) {
-            this.orthographicCamera.near = camera.userData.near;
-            this.orthographicCamera.far = camera.userData.far;
-            this.orthographicCamera.needsProjectionMatrixUpdate = true;
-            this.perspectiveCamera.near = camera.userData.near;
-            this.perspectiveCamera.far = camera.userData.far;
-            this.perspectiveCamera.needsProjectionMatrixUpdate = true;
-        }
-        if(camera.userData.left !== undefined && camera.userData.right !== undefined && camera.userData.top !== undefined && camera.userData.bottom !== undefined) {
-            this.orthographicCamera.left = camera.userData.left;
-            this.orthographicCamera.right = camera.userData.right;
-            this.orthographicCamera.top = camera.userData.top;
-            this.orthographicCamera.bottom = camera.userData.bottom;
-            this.orthographicCamera.needsProjectionMatrixUpdate = true;
-        }
-        if(camera.userData.fov !== undefined && camera.userData.aspectRatio !== undefined) {
-            this.perspectiveCamera.fov = camera.userData.fov;
-            this.perspectiveCamera.aspect = camera.userData.aspectRatio;
-            this.perspectiveCamera.needsProjectionMatrixUpdate = true;
-        }
-        this.selectedCamera = camera.userData.perspective ? this.perspectiveCamera : this.orthographicCamera;
-        this.renderPass.camera = this.selectedCamera;
-        this.outlinePass.renderCamera = this.selectedCamera;
+    setSelectedCamera(camera) {
+        if(camera.cameraObject === undefined)
+            throw 'must be a Camera or LocalCamera instance';
 
-        if(this.orthographicCamera.needsProjectionMatrixUpdate) {
-            delete this.orthographicCamera.needsProjectionMatrixUpdate;
-            this.orthographicCamera.updateProjectionMatrix();
-        }
-        if(this.perspectiveCamera.needsProjectionMatrixUpdate) {
-            delete this.perspectiveCamera.needsProjectionMatrixUpdate;
-            this.perspectiveCamera.updateProjectionMatrix();
-        }
+        // disable orbit controls otherwise it would mess with camera's pose:
+        orbitControlsWrapper.disable();
 
-        orbitControlsWrapper.orbitControls.enablePan = camera.userData.enablePan ?? true;
-        orbitControlsWrapper.orbitControls.enableRotate = camera.userData.enableRotate ?? true;
-        orbitControlsWrapper.orbitControls.enableZoom = camera.userData.enableZoom ?? true;
+        this.selectedCamera = camera;
+
+        this.renderPass.camera = this.selectedCamera.cameraObject;
+
+        this.outlinePass.renderCamera = this.selectedCamera.cameraObject;
+
+        orbitControlsWrapper.setCamera(camera);
+        // XXX: CAMERA ISSUES WTF READ THIS
+        //    CoppeliaSim and three.js cameras have opposite Z axis;
+        //    because of that, we have to put the three.js camera as child
+        //    of another (THREE.Group) object, rotated 180 deg on its Y;
+        //    but this way, OrbitControls isn't able to manipulate camera parent
+        //    properly;
+        //    additionally OrbitControls can't properly manipulate a non-parentless object
+        //    so our possibilities are very restricted here;
+        //    therefore we disable camera manipulation for remote cameras:
+        orbitControlsWrapper.setEnabled(camera instanceof LocalCamera);
+        orbitControlsWrapper.setManipulationPermissions(
+            camera.userData.enablePan ?? true,
+            camera.userData.enableRotate ?? true,
+            camera.userData.enableZoom ?? true
+        );
+
+        transformControlsWrapper.setCamera(camera);
+
+        this.requestRender();
 
         this.dispatchEvent('selectedCameraChanged', {});
     }
 
+    /*
     getCameraPose() {
         return [
             ...this.selectedCamera.position.toArray(),
-            ...qRot(this.selectedCamera.quaternion.toArray(), [0, 1, 0], -Math.PI),
+            ...this.selectedCamera.quaternion.toArray()
         ];
     }
 
     setCameraPose(pose) {
         this.dispatchEvent('cameraPoseChanging', {oldPose: this.getCameraPose(), newPose: pose});
 
-        this.perspectiveCamera.position.set(pose[0], pose[1], pose[2]);
-        //this.perspectiveCamera.quaternion.set(pose[3], pose[4], pose[5], pose[6]);
-        // XXX: three.js's camera looks down its local negative-Z axis, which is opposite to coppeliaSim
-        //      so we need to flip, by rotating 180 deg around Y
-        this.perspectiveCamera.quaternion.set(...qRot([pose[3], pose[4], pose[5], pose[6]], [0, 1, 0], Math.PI));
-
-        this.orthographicCamera.position.set(pose[0], pose[1], pose[2]);
-        this.orthographicCamera.quaternion.set(pose[3], pose[4], pose[5], pose[6]);
+        this.selectedCamera.position.set(pose[0], pose[1], pose[2]);
+        this.selectedCamera.quaternion.set(pose[3], pose[4], pose[5], pose[6]);
 
         this.dispatchEvent('cameraPoseChanged', {});
     }
+    */
 
     fitCameraToSelection(selection, camera, controls, fitOffset = 1.2) {
         const box = new THREE.Box3();
@@ -2911,9 +2940,8 @@ class View {
         //controls.maxDistance = distance * 10;
         controls.target.copy(center);
 
-        //camera.near = distance / 100;
-        //camera.far = distance * 100;
-        camera.updateProjectionMatrix();
+        //camera.setCameraNear(distance / 100);
+        //camera.setCameraFar(distance * 100);
 
         camera.position.copy(controls.target).sub(direction);
 
@@ -3042,7 +3070,7 @@ class View {
         if(settings.selection.style.outline)
             this.composer.render();
         else
-            this.renderer.render(this.sceneWrapper.scene, this.selectedCamera);
+            this.renderer.render(this.sceneWrapper.scene, this.selectedCamera.cameraObject);
     }
 }
 
@@ -3078,16 +3106,78 @@ class AxesView {
 }
 
 class OrbitControlsWrapper {
-    constructor(camera, renderer) {
+    constructor(camera, renderer, renderFunc) {
         this.orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
         this.orbitControls.minDistance = 0.5;
+        this.renderFunc = renderFunc;
+        this.orbitControls.addEventListener('change', (event) => {
+            this.renderFunc();
+        });
+        if(camera.parent !== sceneWrapper.scene) this.disable();
+    }
+
+    setCamera(camera) {
+        if(!this.orbitControls) return;
+        this.orbitControls.object = camera;
+        if(camera.parent !== sceneWrapper.scene) this.disable();
+        else this.update();
+    }
+
+    getTarget() {
+        if(!this.orbitControls) return new THREE.Vector3(0, 0, 0);
+        return this.orbitControls.target;
+    }
+
+    setTarget(target) {
+        if(!this.orbitControls) return;
+        this.orbitControls.target.copy(target);
+        this.update();
+    }
+
+    setScreenSpacePanning(screenSpacePanning) {
+        if(!this.orbitControls) return;
+        this.orbitControls.screenSpacePanning = screenSpacePanning;
+    }
+
+    enable() {
+        return this.setEnabled(true);
+    }
+
+    disable() {
+        return this.setEnabled(false);
+    }
+
+    setEnabled(enabled) {
+        if(!this.orbitControls) return;
+        var oldEnabled = this.orbitControls.enabled;
+        this.orbitControls.enabled = enabled;
+        this.update();
+        return oldEnabled;
+    }
+
+    setManipulationPermissions(pan, rotate, zoom) {
+        if(!this.orbitControls) return;
+        this.orbitControls.enablePan = pan;
+        this.orbitControls.enableRotate = rotate;
+        this.orbitControls.enableZoom = zoom;
+    }
+
+    addEventListener(eventName, func) {
+        if(!this.orbitControls) return;
+        this.orbitControls.addEventListener(eventName, func);
+    }
+
+    update() {
+        if(!this.orbitControls) return;
+        if(this.orbitControls.enabled)
+            this.orbitControls.update();
     }
 }
 
 class TransformControlsWrapper {
     constructor(sceneWrapper, camera, renderer) {
         this.sceneWrapper = sceneWrapper;
-        this.transformControls = new THREE.TransformControls(camera, renderer.domElement);
+        this.transformControls = new THREE.TransformControls(camera.cameraObject, renderer.domElement);
         this.transformControls.enabled = false;
         this.transformControls.addEventListener('dragging-changed', (event) => {
             if(event.value) this.onStartTransform();
@@ -3104,6 +3194,10 @@ class TransformControlsWrapper {
 
     disable() {
         this.transformControls.enabled = false;
+    }
+
+    setCamera(camera) {
+        this.transformControls.camera = camera.cameraObject;
     }
 
     setMode(mode) {
@@ -3477,28 +3571,31 @@ view.selectPointTool.addEventListener('selectedPoint', (event) => {
     });
 });
 
+/*
 view.addEventListener('selectedCameraChanged', () => {
     if(view.selectedCamera.type == 'OrthographicCamera') {
         // XXX: make sure camera looks "straight"
         var v = view.selectedCamera.position.clone();
-        v.sub(orbitControlsWrapper.orbitControls.target);
+        var target = orbitControlsWrapper.getTarget();
+        v.sub(target);
         v.x = Math.abs(v.x);
         v.y = Math.abs(v.y);
         v.z = Math.abs(v.z);
         if(v.x >= v.y && v.x >= v.z) {
-            orbitControlsWrapper.orbitControls.target.y = view.selectedCamera.position.y;
-            orbitControlsWrapper.orbitControls.target.z = view.selectedCamera.position.z;
+            target.y = view.selectedCamera.position.y;
+            target.z = view.selectedCamera.position.z;
         } else if(v.y >= v.x && v.y >= v.z) {
-            orbitControlsWrapper.orbitControls.target.x = view.selectedCamera.position.x;
-            orbitControlsWrapper.orbitControls.target.z = view.selectedCamera.position.z;
+            target.x = view.selectedCamera.position.x;
+            target.z = view.selectedCamera.position.z;
         } else if(v.z >= v.x && v.z >= v.y) {
-            orbitControlsWrapper.orbitControls.target.x = view.selectedCamera.position.x;
-            orbitControlsWrapper.orbitControls.target.y = view.selectedCamera.position.y;
+            target.x = view.selectedCamera.position.x;
+            target.y = view.selectedCamera.position.y;
         }
+        orbitControlsWrapper.setTarget(target);
 
         // XXX: first time camera shows nothing, moving mouse wheel fixes that
-        if(!orbitControlsWrapper.orbitControls.XXX) {
-            orbitControlsWrapper.orbitControls.XXX = true;
+        if(!orbitControlsWrapper.XXX) {
+            orbitControlsWrapper.XXX = true;
             for(var i = 0; i < 2; i++) {
                 setTimeout(() => {
                     var evt = document.createEvent('MouseEvents');
@@ -3509,42 +3606,36 @@ view.addEventListener('selectedCameraChanged', () => {
             }
         }
     }
-    orbitControlsWrapper.orbitControls.object = view.selectedCamera;
-    orbitControlsWrapper.orbitControls.update();
 
     transformControlsWrapper.transformControls.camera = view.selectedCamera;
 });
 view.addEventListener('cameraPoseChanging', e => {
     // save orbitControl's target in camera coords *before* moving the camera
     view.selectedCamera.updateMatrixWorld();
-    view.targetLocal = view.selectedCamera.worldToLocal(orbitControlsWrapper.orbitControls.target);
+    view.targetLocal = view.selectedCamera.worldToLocal(orbitControlsWrapper.getTarget());
 });
 view.addEventListener('cameraPoseChanged', () => {
     // compute new global position of target
     view.selectedCamera.updateMatrixWorld();
     var t = view.selectedCamera.localToWorld(view.targetLocal);
     // move orbitControl's target
-    orbitControlsWrapper.orbitControls.target.set(t.x, t.y, t.z);
-    orbitControlsWrapper.orbitControls.update();
+    orbitControlsWrapper.setTarget(t);
 });
+*/
 
 var axesView = new AxesView(document.querySelector('#axes'), view.selectedCamera.up);
 
-var orbitControlsWrapper = new OrbitControlsWrapper(view.perspectiveCamera, view.renderer);
-orbitControlsWrapper.orbitControls.addEventListener('change', (event) => {
-    render();
-});
+var orbitControlsWrapper = new OrbitControlsWrapper(view.selectedCamera, view.renderer, () => render());
 
-var transformControlsWrapper = new TransformControlsWrapper(sceneWrapper, view.perspectiveCamera, view.renderer);
+var transformControlsWrapper = new TransformControlsWrapper(sceneWrapper, view.selectedCamera, view.renderer);
 transformControlsWrapper.transformControls.addEventListener('dragging-changed', event => {
     // disable orbit controls while dragging:
     if(event.value) {
         // dragging has started: store enabled flag
-        transformControlsWrapper.orbitControlsWasEnabled = orbitControlsWrapper.orbitControls.enabled;
-        orbitControlsWrapper.orbitControls.enabled = false;
+        transformControlsWrapper.orbitControlsWasEnabled = orbitControlsWrapper.setEnabled(false);
     } else {
         // dragging has ended: restore previous enabled flag
-        orbitControlsWrapper.orbitControls.enabled = transformControlsWrapper.orbitControlsWasEnabled;
+        orbitControlsWrapper.setEnabled(transformControlsWrapper.orbitControlsWasEnabled);
         transformControlsWrapper.orbitControlsWasEnabled = undefined;
     }
 });
@@ -3629,9 +3720,8 @@ function render() {
 
 function animate() {
     requestAnimationFrame(animate);
-    //orbitControlsWrapper.orbitControls.update();
     view.render();
-    axesView.render(view.selectedCamera.position, orbitControlsWrapper.orbitControls.target);
+    axesView.render(view.selectedCamera.position, orbitControlsWrapper.getTarget());
 }
 animate();
 
@@ -3660,7 +3750,7 @@ function onObjectChanged(eventData) {
     obj.update(eventData);
 
     if(view.isPartOfSelection(obj) || view.selectedObject?.ancestorObjects?.includes(obj)) {
-        view.requestRender(); // view.render(); // with view.render(), rendering of model bbos is very slow // XXX: without this, bbox would lag behind
+        view.requestRender(); // view.render(); // with view.render(), rendering of model bbox is very slow // XXX: without this, bbox would lag behind
         view.requestBoundingBoxUpdate();
     }
 
@@ -3783,8 +3873,7 @@ function setTransformSnap(enabled) {
 }
 
 function setScreenSpacePanning(enabled) {
-    orbitControlsWrapper.orbitControls.screenSpacePanning = enabled;
-    orbitControlsWrapper.orbitControls.update();
+    orbitControlsWrapper.setScreenSpacePanning(enabled);
 }
 
 function setPickPointMode() {
