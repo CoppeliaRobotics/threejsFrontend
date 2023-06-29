@@ -3552,6 +3552,15 @@ transformControlsWrapper.transformControls.addEventListener('change', (event) =>
 });
 
 if(!offline) {
+    visualizationStreamClient.addEventListener('callFunction', function(eventInfo) {
+        var eventData = eventInfo.data;
+        var result = window[eventData.funcName](...eventData.funcArgs);
+        notifyEvent({event: 'callFunctionReply', data: {
+            requestId: eventData.requestId,
+            result: result
+        }});
+    });
+
     var remoteApiClient = new RemoteAPIClient(remoteApiEndpoint.host, remoteApiEndpoint.port, remoteApiEndpoint.codec, {createWebSocket: url => new ReconnectingWebSocket(url)});
     var sim = null;
     remoteApiClient.websocket.onOpen.addListener(() => {
