@@ -2416,6 +2416,10 @@ class SceneWrapper {
         return BaseObject.getObjectByUid(uid);
     }
 
+    getObjectByName(name) {
+        return this.scene.getObjectByName(name);
+    }
+
     removeObject(obj) {
         obj.removeFromParent();
         delete BaseObject.objectsByUid[obj.userData.uid];
