@@ -142,15 +142,12 @@ end
 function onWSHTTP(server,connection,resource,data)
     resource=url.unescape(resource)
     local status,data=404,nil
-    if resource=='/' or resource=='/threejsFrontend.html' then
-        status,data=getFileContents(resourcesDir..'/threejsFrontend.html')
-        if status==200 then
+    if resource=='/' then resource='/threejsFrontend.html' end
+    if any(function(ext) return string.endswith(resource,'.'..ext) end,{'html','htm','css','js','js.map'}) then
+        status,data=getFileContents(resourcesDir..resource)
+        if status==200 and string.endswith(resource,'.html') then
             data=string.gsub(data,'const wsPort = 23020;','const wsPort = '..wsPort..';')
         end
-    elseif resource=='/threejsFrontend.js' then
-        status,data=getFileContents(resourcesDir..'/threejsFrontend.js')
-    elseif resource:sub(1,10)=='/3rdparty/' then
-        status,data=getFileContents(resourcesDir..resource)
     end
     if status==404 and resource~='/favicon.ico' then
         sim.addLog(sim.verbosity_errors,'resource not found: '..resource)
