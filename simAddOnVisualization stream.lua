@@ -1,12 +1,21 @@
 sim=require'sim'
 
+custom={
+    menu='Connectivity\nVisualization stream',
+    rootResource='threejsFrontend.html',
+    paramNamespace='visualizationStream',
+}
+pcall(function()
+    custom=require'threejsFrontend-custom'
+end)
+
 function P(n)
     -- parameters namespace
-    return 'visualizationStream.'..n
+    return custom.paramNamespace..'.'..n
 end
 
 function sysCall_info()
-    return {autoStart=sim.getNamedBoolParam(P'autoStart')==true,menu='Connectivity\nVisualization stream'}
+    return {autoStart=sim.getNamedBoolParam(P'autoStart')==true,menu=custom.menu}
 end
 
 function sysCall_init()
@@ -142,7 +151,7 @@ end
 function onWSHTTP(server,connection,resource,data)
     resource=url.unescape(resource)
     local status,data=404,nil
-    if resource=='/' then resource='/threejsFrontend.html' end
+    if resource=='/' then resource='/'..custom.rootResource end
     if any(function(ext) return string.endswith(resource,'.'..ext) end,{'html','htm','css','js','js.map'}) then
         status,data=getFileContents(resourcesDir..resource)
         if status==200 and string.endswith(resource,'.html') then
