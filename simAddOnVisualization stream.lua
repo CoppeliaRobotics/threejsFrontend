@@ -158,6 +158,8 @@ function onWSHTTP(server,connection,resource,data)
         status,data=getFileContents(resourcesDir..resource)
         if status==200 and string.endswith(resource,'.html') then
             data=string.gsub(data,'const wsPort = 23020;','const wsPort = '..wsPort..';')
+            data=string.gsub(data,string.escpat'<!--[[CUSTOM_HTML]]-->',custom.extraHTML or '')
+            data=string.gsub(data,string.escpat'<!--[[CUSTOM_HELP]]-->',custom.extraHelp or '')
         end
     end
     if status==404 and resource~='/favicon.ico' then
