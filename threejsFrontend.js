@@ -513,6 +513,29 @@ class BaseObject extends THREE.Group {
         this.userData.boundingBox = boundingBox;
     }
 
+    get boundingBoxPoints() {
+        if(!this.userData.boundingBox) return [];
+        var hsize = this.userData.boundingBox.hsize;
+        var pose = this.userData.boundingBox.pose;
+        var m = new THREE.Matrix4().compose(
+            new THREE.Vector3(pose[0], pose[1], pose[2]),
+            new THREE.Quaternion(pose[3], pose[3], pose[5], pose[6]),
+            new THREE.Vector3(1, 1, 1)
+        );
+        var pts = [];
+        for(var kx of [-1, 1]) {
+            for(var ky of [-1, 1]) {
+                for(var kz of [-1, 1]) {
+                    var v = new THREE.Vector3(kx * hsize[0], ky * hsize[1], kz * hsize[2]);
+                    v.applyMatrix4(m);
+                    v.applyMatrix4(this.matrixWorld);
+                    pts.push(v);
+                }
+            }
+        }
+        return pts;
+    }
+
     get boundingBoxObjects() {
         var objects = [];
         if(this.userData.modelBase) {
@@ -2859,7 +2882,13 @@ class View {
 
     fitCameraToSelection(selection, camera, controls, fitOffset = 1.2) {
         const box = new THREE.Box3();
-        for(const object of selection) box.expandByObject(object);
+        for(const object of selection) {
+            if(object.boundingBoxPoints !== undefined) {
+                for(const p of object.boundingBoxPoints) {
+                    box.expandByPoint(p);
+                }
+            }
+        }
         const size = box.getSize(new THREE.Vector3());
         const center = box.getCenter(new THREE.Vector3());
         const maxSize = Math.max(size.x, size.y, size.z);
