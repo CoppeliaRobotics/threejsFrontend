@@ -190,7 +190,7 @@ class VisualizationStreamClient {
             this.receivedGenesisEvents = true;
         }
 
-        var outOfSequence = (settings.events.waitForGenesis && !this.receivedGenesisEvents) ||
+        var outOfSequence = (!offline && settings.events.waitForGenesis && !this.receivedGenesisEvents) ||
             (this.seq !== -1 && eventData.seq !== undefined && eventData.seq !== (this.seq + 1));
 
         if(outOfSequence && !settings.events.discardOutOfSequence && settings.events.warnOutOfSequence) {
