@@ -13,11 +13,6 @@ function sysCall_init()
     sentGenesis={}
     resourcesDir=sim.getStringParameter(sim.stringparam_resourcesdir)
 
-    if not simWS then
-        sim.addLog(sim.verbosity_errors,'the WS plugin is not available')
-        return {cmd='cleanup'}
-    end
-
     wsPort=sim.getNamedInt32Param('visualizationStream.ws.port') or 23020
     sim.addLog(sim.verbosity_scriptinfos,'WS endpoint on port '..tostring(wsPort)..'...')
     if sim.getNamedBoolParam('visualizationStream.ws.retryOnStartFailure') then
