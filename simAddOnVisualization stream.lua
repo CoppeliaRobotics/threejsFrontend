@@ -1,7 +1,12 @@
 sim=require'sim'
 
+function P(n)
+    -- parameters namespace
+    return 'visualizationStream.'..n
+end
+
 function sysCall_info()
-    return {autoStart=sim.getNamedBoolParam('visualizationStream.autoStart')==true,menu='Connectivity\nVisualization stream'}
+    return {autoStart=sim.getNamedBoolParam(P'autoStart')==true,menu='Connectivity\nVisualization stream'}
 end
 
 function sysCall_init()
@@ -13,9 +18,9 @@ function sysCall_init()
     sentGenesis={}
     resourcesDir=sim.getStringParameter(sim.stringparam_resourcesdir)
 
-    wsPort=sim.getNamedInt32Param('visualizationStream.ws.port') or 23020
+    wsPort=sim.getNamedInt32Param(P'ws.port') or 23020
     sim.addLog(sim.verbosity_scriptinfos,'WS endpoint on port '..tostring(wsPort)..'...')
-    if sim.getNamedBoolParam('visualizationStream.ws.retryOnStartFailure') then
+    if sim.getNamedBoolParam(P'ws.retryOnStartFailure') then
         while true do
             local r,e=pcall(function() wsServer=simWS.start(wsPort) end)
             if r then break end
@@ -110,5 +115,5 @@ function sendEventRaw(d,conn)
 end
 
 function verbose()
-    return sim.getNamedInt32Param('visualizationStream.verbose') or 0
+    return sim.getNamedInt32Param(P'verbose') or 0
 end
