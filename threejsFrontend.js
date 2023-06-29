@@ -44,21 +44,24 @@ class EventSourceMixin {
     }
 
     removeEventListener(eventName, listener) {
-        let listeners = this._eventListeners?.[eventName];
-        if(!listeners) return;
-        for(let i = 0; i < listeners.length; i++) {
-            if(listeners[i] === listener) {
-                listeners.splice(i--, 1);
+        if(!this._eventListeners) return;
+        if(!this._eventListeners[eventName]) return;
+        for(let i = 0; i < this._eventListeners[eventName].length; i++) {
+            if(this._eventListeners[eventName][i] === listener) {
+                this._eventListeners[eventName].splice(i--, 1);
             }
         }
     }
 
     dispatchEvent(eventName, ...args) {
+        if(!this._eventListeners) return 0;
         var count = 0;
-        if(this._eventListeners?.[eventName]) {
-            for(var listener of this._eventListeners[eventName]) {
-                listener.apply(this, args);
-                count++;
+        for(var handledEvent of [eventName, '*']) {
+            if(this._eventListeners[handledEvent]) {
+                for(var listener of this._eventListeners[handledEvent]) {
+                    listener.apply(this, args);
+                    count++;
+                }
             }
         }
         return count;
