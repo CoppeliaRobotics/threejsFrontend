@@ -10,6 +10,7 @@ function sysCall_init()
     base64=require'base64'
     url=require'socket.url'
 
+    sentGenesis={}
     resourcesDir=sim.getStringParameter(sim.stringparam_resourcesdir)
 
     if not simWS then
@@ -67,6 +68,7 @@ function onWSOpen(server,connection)
     if server==wsServer then
         wsClients[connection]=1
         sendEventRaw(sim.getGenesisEvents(),connection)
+        sentGenesis[connection]=1
     end
 end
 
@@ -104,7 +106,8 @@ function sendEventRaw(d,conn)
 
     if wsServer then
         for connection,_ in pairs(wsClients) do
-            if conn==nil or conn==connection then
+            -- broadcast only after genesis
+            if (conn==nil and sentGenesis[connection]) or conn==connection then
                 simWS.send(wsServer,connection,d,simWS.opcode.binary)
             end
         end
