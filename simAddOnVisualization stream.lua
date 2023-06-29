@@ -1,9 +1,7 @@
 sim=require'sim'
 
 function sysCall_info()
-    autoStart=sim.getNamedBoolParam('visualizationStream.autoStart')
-    if autoStart==nil then autoStart=false end
-    return {autoStart=autoStart,menu='Connectivity\nVisualization stream'}
+    return {autoStart=sim.getNamedBoolParam('visualizationStream.autoStart')==true,menu='Connectivity\nVisualization stream'}
 end
 
 function sysCall_init()
@@ -36,9 +34,6 @@ function sysCall_init()
     simWS.setMessageHandler(wsServer,'onWSMessage')
     simWS.setHTTPHandler(wsServer,'onWSHTTP')
     wsClients={}
-
-    sim.test('sim.mergeEvents',true)
-    sim.test('sim.cborEvents',true)
 
     sim.addLog(sim.verbosity_scriptinfos,'e.g. in your local web browser, type: http://127.0.0.1:'..tostring(wsPort))
 end
