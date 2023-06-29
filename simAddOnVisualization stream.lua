@@ -6,7 +6,9 @@ custom={
     paramNamespace='visualizationStream',
 }
 pcall(function()
-    custom=require'threejsFrontend-custom'
+    for k,v in pairs(require'threejsFrontend-custom') do
+        custom[k]=v
+    end
 end)
 
 function P(n)
