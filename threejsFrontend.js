@@ -3822,6 +3822,15 @@ function onSimulationChanged(eventData) {
 }
 
 function onAppSession(eventData) {
+    var ver = eventData.data.protocolVersion ?? 1;
+    const suppVer = 2;
+    if(ver !== suppVer) {
+        window.alert(`Protocol version not supported. Please upgrade ${ver < suppVer ? 'CoppeliaSim' : 'threejsFrontend'}.`);
+        visualizationStreamClient.websocket.close();
+        document.querySelector('body').innerHTML = '';
+        return;
+    }
+
     if(eventData.data.sessionId && visualizationStreamClient.sessionId !== eventData.data.sessionId) {
         //visualizationStreamClient.seq = -1; // not needed anymore, since events are always contiguous
         visualizationStreamClient.sessionId = eventData.data.sessionId;
