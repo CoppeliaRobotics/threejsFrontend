@@ -121,7 +121,7 @@ function processZMQRequests()
         local rc,revents=simZMQ.poll({zmqREPSocket},{simZMQ.POLLIN},0)
         if rc<=0 then break end
         local rc,req=simZMQ.recv(zmqREPSocket,0)
-        req=cbor.decode(req)
+        req=cbor.decode(tostring(req))
         local resp=''
         if req.cmd=='getbacklog' then
             resp=sim.getGenesisEvents()
