@@ -37,7 +37,10 @@ function sysCall_init()
         simZMQ.__raiseErrors(true) -- so we don't need to check retval with every call
         zmqPUBPort = sim.getNamedInt32Param(P'zmq.pub.port') or 23010
         zmqREPPort = sim.getNamedInt32Param(P'zmq.rep.port') or (zmqPUBPort+1)
-        print('ZMQ endpoint on ports ' .. tostring(zmqPUBPort) .. ', ' .. tostring(zmqREPPort) .. '...')
+        sim.addLog(
+            sim.verbosity_scriptinfos,
+            string.format('ZeroMQ endpoint on ports %d, %d...', zmqPUBPort, zmqREPPort)
+        )
         zmqContext = simZMQ.ctx_new()
         zmqPUBSocket = simZMQ.socket(zmqContext, simZMQ.PUB)
         simZMQ.bind(zmqPUBSocket, string.format('tcp://*:%d', zmqPUBPort))
@@ -48,12 +51,18 @@ function sysCall_init()
     if wsEnable then
         simWS = require 'simWS'
         wsPort = sim.getNamedInt32Param(P'ws.port') or 23020
-        print('WS endpoint on port ' .. tostring(wsPort) .. '...')
+        sim.addLog(
+            sim.verbosity_scriptinfos,
+            string.format('WebSocket endpoint on port %d...', wsPort)
+        )
         if sim.getNamedBoolParam(P'ws.retryOnStartFailure') then
             while true do
                 local r, e = pcall(function() wsServer = simWS.start(wsPort) end)
                 if r then break end
-                print('WS failed to start (' .. e .. '). Retrying...')
+                sim.addLog(
+                    sim.verbosity_errors,
+                    string.format('WS failed to start (%s). Retrying...', e)
+                )
                 sim.wait(0.5, false)
             end
         else
