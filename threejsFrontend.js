@@ -183,6 +183,20 @@ class VisualizationStreamClient {
     }
 
     handleEvent(eventData) {
+        // unflatten dotted properties
+        for(let k in eventData.data ?? {}) {
+            if(k.includes('.')) {
+                let f = k.split('.');
+                let tmp = eventData.data;
+                for(let i = 0; i < f.length - 1; i++) {
+                    tmp[f[i]] = tmp[f[i]] ?? {};
+                    tmp = tmp[f[i]];
+                }
+                tmp[f[f.length - 1]] = eventData.data[k];
+                delete eventData.data[k];
+            }
+        }
+
         if(eventData.event === 'genesisBegin') {
             if(this.seq === -1 && !this.receivedGenesisEvents)
                 this.seq = eventData.seq - 1;
@@ -563,132 +577,54 @@ class Shape extends BaseObject {
     constructor(sceneWrapper) {
         super(sceneWrapper);
         this.userData.type = 'shape';
-        this.userData.count = 0;
     }
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.shape !== undefined)
-            this.setShape(eventData.data.shape);
+        if(eventData.data.meshes !== undefined)
+            this.setShapeMeshes(eventData.data.meshes);
     }
 
     setLayer(layer) {
         super.setLayer(layer);
-        for(var submesh of this.children) {
-            if(submesh.userData.type !== 'submesh') continue;
-            for(var c of submesh.children) {
+        for(var mesh of this.children) {
+            if(mesh.userData.type !== 'mesh') continue;
+            for(var c of mesh.children) {
                 c.layers.mask = this.computedLayer();
             }
         }
     }
 
-    setShape(shape) {
-        if(shape.meshes !== undefined)
-            this.setShapeMeshes(shape.meshes);
-        if(shape.color !== undefined)
-            this.setShapeColor(shape.color);
-    }
-
     setShapeMeshes(meshes) {
-        for(var submesh of this.children) {
-            if(submesh.userData.type !== 'submesh') continue;
-            this.remove(submesh);
-        }
-        this.userData.count = meshes.length;
-        for(var i = 0; i < meshes.length; i++) {
-            var g = new THREE.Group();
-            g.userData.type = 'submesh';
-            g.userData.index = i;
+        this.userData.meshes = meshes;
+    }
+}
 
-            var mesh = Shape.createMesh(meshes[i]);
-            mesh.name = `Mesh ${i}`;
-            mesh.userData.type = 'mesh';
-            mesh.userData.pickThisIdInstead = this.id;
-            mesh.userData.showEdges = !!meshes[i].showEdges;
-            mesh.userData.shadingAngle = meshes[i].shadingAngle;
-            mesh.castShadow = settings.shadows.enabled;
-            mesh.receiveShadow = settings.shadows.enabled;
-
-            const edgeMesh = new THREE.LineSegments(
-                meshes[i].shadingAngle < 1e-4
-                    ? new THREE.WireframeGeometry(mesh.geometry)
-                    : new THREE.EdgesGeometry(mesh.geometry, meshes[i].shadingAngle * 180 / Math.PI),
-                new THREE.LineBasicMaterial({color: 0x000000})
-            );
-            edgeMesh.name = `Edges ${i}`;
-            edgeMesh.visible = !!meshes[i].showEdges;
-            edgeMesh.userData.type = 'edges';
-            edgeMesh.userData.pickThisIdInstead = this.id;
-
-            g.add(mesh);
-            g.add(edgeMesh);
-            this.add(g);
-        }
-
-        // submeshes have changed -> set layer
-        this.setLayer(this.userData.layer);
+class Mesh extends THREE.Group {
+    constructor(sceneWrapper) {
+        super();
+        this.userData.type = 'mesh';
+        this.sceneWrapper = sceneWrapper;
     }
 
-    getSubMeshGroup(index) {
-        for(var c of this.children) {
-            if(c.userData.type === 'submesh' && c.userData.index === index)
-                return c;
-        }
+    init() {
     }
 
-    getSubMesh(index) {
-        var g = this.getSubMeshGroup(index);
-        for(var c of g.children) {
-            if(c.userData.type === 'mesh')
-                return c;
-        }
+    clone(recursive) {
+        var obj = new this.constructor(this.sceneWrapper, this.parentObject).copy(this, true);
+        return obj;
     }
 
-    getSubMeshEdges(index) {
-        var g = this.getSubMeshGroup(index);
-        for(var c of g.children) {
-            if(c.userData.type === 'edges')
-                return c;
-        }
-    }
+    update(eventData) {
+        const data = eventData.data;
 
-    setShapeColor(color) {
-        const i = color.index || 0;
-        const mesh = this.getSubMesh(i);
-        if(color.color !== undefined) {
-            const c = color.color;
-            mesh.material.color.setRGB(c[0], c[1], c[2]);
-            mesh.material.specular.setRGB(c[3], c[4], c[5]);
-            mesh.material.emissive.setRGB(c[6], c[7], c[8]);
+        if(data.shapeUid !== undefined) {
+            var shape = this.sceneWrapper.getObjectByUid(data.shapeUid);
+            shape.attach(this);
+            this.position.set(0, 0, 0);
+            this.quaternion.set(0, 0, 0, 1);
         }
-        if(color.transparency !== undefined) {
-            mesh.material.transparent = color.transparency > 1e-4;
-            mesh.material.opacity = 1 - color.transparency;
-        }
-        if(color.showEdges !== undefined) {
-            const edges = this.getSubMeshEdges(i);
-            edges.visible = color.showEdges;
-        }
-    }
 
-    setEdgesColor(c) {
-        for(var i = 0; i < this.userData.count; i++) {
-            const edges = this.getSubMeshEdges(i);
-            if(c === null) {
-                edges.material.color.setRGB(0, 0, 0);
-                edges.material.transparent = false;
-                edges.material.opacity = 1.0;
-                edges.visible = !!this.getSubMesh(i).userData.showEdges;
-            } else {
-                edges.material.color.setRGB(c[0], c[1], c[2]);
-                edges.material.transparent = true;
-                edges.material.opacity = c[3] || 1.0;
-                edges.visible = true;
-            }
-        }
-    }
-
-    static createMesh(data) {
         const geometry = new THREE.BufferGeometry();
         // XXX: vertex attribute format handed by CoppeliaSim is not correct
         //      we expand all attributes and discard indices
@@ -712,35 +648,34 @@ class Shape extends BaseObject {
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
         var texture = null;
-        if(data.texture !== undefined) {
-            texture = new THREE.DataTexture(data.texture.rawTexture, data.texture.resolution[0], data.texture.resolution[1], THREE.RGBAFormat);
-            if((data.texture.options & 1) > 0)
+        if(data.rawTexture !== undefined) {
+            texture = new THREE.DataTexture(data.rawTexture, data.textureResolution[0], data.textureResolution[1], THREE.RGBAFormat);
+            if(data.textureRepeatU)
                 texture.wrapS = THREE.RepeatWrapping;
-            if((data.texture.options & 2) > 0)
+            if(data.textureRepeatV)
                 texture.wrapT = THREE.RepeatWrapping;
-            if((data.texture.options & 4) > 0)
+            if(data.textureInterpolate)
                 texture.magFilter = texture.minFilter = THREE.LinearFilter;
             else
                 texture.magFilter = texture.minFilter = THREE.NearestFilter;
 
             if(false) { // XXX: see above
-                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.texture.coordinates, 2));
+                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.textureCoordinates, 2));
             } else {
                 var uvs = [];
                 for(var i = 0; i < data.indices.length; i++) {
                     var index = data.indices[i];
-                    var uv = data.texture.coordinates.slice(2 * i, 2 * (i + 1));
+                    var uv = data.textureCoordinates.slice(2 * i, 2 * (i + 1));
                     uvs.push(uv[0], uv[1]);
                 }
                 geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
             }
         }
-        const c = data.color;
         const material = new THREE.MeshPhongMaterial({
             side: data.culling ? THREE.FrontSide : THREE.DoubleSide,
-            color:    new THREE.Color(c[0], c[1], c[2]),
-            specular: new THREE.Color(c[3], c[4], c[5]),
-            emissive: new THREE.Color(c[6], c[7], c[8]),
+            color:    new THREE.Color(...data.color.diffuse),
+            specular: new THREE.Color(...data.color.specular),
+            emissive: new THREE.Color(...data.color.emission),
             map: texture,
             polygonOffset: true,
             polygonOffsetFactor: 0.5,
@@ -753,7 +688,30 @@ class Shape extends BaseObject {
             material.transparent = true;
             material.opacity = 1 - data.transparency;
         }
-        return new THREE.Mesh(geometry, material);
+        var mesh = new THREE.Mesh(geometry, material);
+        mesh.name = `Mesh ${i}`;
+        mesh.userData.type = 'mesh';
+        mesh.userData.pickThisIdInstead = this.id;
+        mesh.userData.showEdges = data.showEdges;
+        mesh.userData.shadingAngle = data.shadingAngle;
+        mesh.castShadow = settings.shadows.enabled;
+        mesh.receiveShadow = settings.shadows.enabled;
+
+        const edgeMesh = new THREE.LineSegments(
+            data.shadingAngle < 1e-4
+                ? new THREE.WireframeGeometry(mesh.geometry)
+                : new THREE.EdgesGeometry(mesh.geometry, data.shadingAngle * 180 / Math.PI),
+            new THREE.LineBasicMaterial({color: 0x000000})
+        );
+        edgeMesh.name = `Edges ${i}`;
+        edgeMesh.visible = data.showEdges;
+        edgeMesh.userData.type = 'edges';
+        edgeMesh.userData.pickThisIdInstead = this.id;
+
+        this.add(mesh);
+        this.add(edgeMesh);
+
+        this.parent.setLayer(this.parent.userData.layer);
     }
 }
 
@@ -810,6 +768,9 @@ class JointVisual extends BaseVisual {
         fixedGeom.userData.type = `${this.userData.type}.fixed`;
         fixedGeom.userData.pickThisIdInstead = this.parentObject.id;
         fixedGeom.rotation.x = Math.PI / 2;
+        fixedGeom.material.color.setRGB(0, 0, 0);
+        fixedGeom.material.specular.setRGB(0, 0, 0);
+        fixedGeom.material.emissive.setRGB(0, 0, 0);
         this.add(fixedGeom);
         return fixedGeom;
     }
@@ -837,6 +798,9 @@ class JointVisual extends BaseVisual {
         movingGeom.userData.type = `${this.userData.type}.moving`;
         movingGeom.userData.pickThisIdInstead = this.parentObject.id;
         movingGeom.rotation.x = Math.PI / 2;
+        movingGeom.material.color.setRGB(0, 0, 0);
+        movingGeom.material.specular.setRGB(0, 0, 0);
+        movingGeom.material.emissive.setRGB(0, 0, 0);
         this.jointFrame.add(movingGeom);
         return movingGeom;
     }
@@ -852,21 +816,11 @@ class JointVisual extends BaseVisual {
         this.movingGeom.layers.mask = this.parentObject.computedLayer();
     }
 
-    setColor(index, color) {
-        if(!this.userData.colors)
-            this.userData.colors = [[0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0]];
-        if(index < 0 || index >= this.userData.colors.length)
-            return;
-        this.userData.colors[index] = color;
-        if(index === 0) {
-            this.fixedGeom.material.color.setRGB(color[0], color[1], color[2]);
-            this.fixedGeom.material.specular.setRGB(color[3], color[4], color[5]);
-            this.fixedGeom.material.emissive.setRGB(color[6], color[7], color[8]);
-        } else if(index === 1) {
-            this.movingGeom.material.color.setRGB(color[0], color[1], color[2]);
-            this.movingGeom.material.specular.setRGB(color[3], color[4], color[5]);
-            this.movingGeom.material.emissive.setRGB(color[6], color[7], color[8]);
-        }
+    setColor(color) {
+        this.userData.color = color;
+        this.fixedGeom.material.color.setRGB(...color.diffuse);
+        this.fixedGeom.material.specular.setRGB(...color.specular);
+        this.fixedGeom.material.emissive.setRGB(...color.emission);
     }
 
     setDiameter(diameter) {
@@ -1033,8 +987,28 @@ class Joint extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.joint !== undefined)
-            this.setJoint(eventData.data.joint);
+        if(this.userData.joint === undefined)
+            this.userData.joint = {};
+        if(eventData.data.jointType !== undefined)
+            this.setJointType(eventData.data.jointType);
+        if(eventData.data.jointPosition !== undefined)
+            this.setJointPosition(eventData.data.jointPosition);
+        if(eventData.data.cyclic !== undefined)
+            this.setJointCyclic(eventData.data.cyclic);
+        if(eventData.data.min !== undefined)
+            this.setJointMin(eventData.data.min);
+        if(eventData.data.range !== undefined)
+            this.setJointRange(eventData.data.range);
+        if(eventData.data.intrinsicPose !== undefined)
+            this.setJointIntrinsicPose(eventData.data.intrinsicPose);
+        if(eventData.data.color !== undefined)
+            this.setJointColor(eventData.data.color);
+        if(eventData.data.jointDiameter !== undefined)
+            this.setJointDiameter(eventData.data.jointDiameter);
+        if(eventData.data.jointLength !== undefined)
+            this.setJointLength(eventData.data.jointLength);
+        if(eventData.data.dependencyParams !== undefined)
+            this.setJointDependency(eventData.data.dependencyParams);
     }
 
     setLayer(layer) {
@@ -1042,39 +1016,16 @@ class Joint extends BaseObject {
         this.visual?.setLayer(layer);
     }
 
-    setJoint(joint) {
-        if(this.userData.joint === undefined)
-            this.userData.joint = {};
-        if(joint.type !== undefined)
-            this.setJointType(joint.type);
-        if(joint.position !== undefined)
-            this.setJointPosition(joint.position);
-        if(joint.cyclic !== undefined)
-            this.setJointCyclic(joint.cyclic);
-        if(joint.min !== undefined)
-            this.setJointMin(joint.min);
-        if(joint.range !== undefined)
-            this.setJointRange(joint.range);
-        if(joint.intrinsicPose !== undefined)
-            this.setJointIntrinsicPose(joint.intrinsicPose);
-        if(joint.color !== undefined)
-            this.setJointColor(joint.color);
-        if(joint.colors !== undefined)
-            this.setJointColors(joint.colors);
-        if(joint.diameter !== undefined)
-            this.setJointDiameter(joint.diameter);
-        if(joint.length !== undefined)
-            this.setJointLength(joint.length);
-        if(joint.dependency !== undefined)
-            this.setJointDependency(joint.dependency);
-    }
-
     setJointType(type) {
         // `type` can only be set once
         if(this.userData.joint.type !== undefined)
             return;
 
-        this.userData.joint.type = type;
+        this.userData.joint.type = {
+            10: 'revolute',
+            11: 'prismatic',
+            12: 'spherical',
+        }[type];
 
         // invoke getter now:
         this.visual;
@@ -1105,12 +1056,7 @@ class Joint extends BaseObject {
     }
 
     setJointColor(color) {
-        this.visual?.setColor(color.index, color.color);
-    }
-
-    setJointColors(colors) {
-        for(var i = 0; i < colors.length; i++)
-            this.visual?.setColor(i, colors[i]);
+        this.visual?.setColor(color);
     }
 
     setJointDiameter(diameter) {
@@ -1194,11 +1140,10 @@ class DummyVisual extends BaseVisual {
         this.scale.z = r1;
     }
 
-    setColor(index, color) {
-        if(index !== 0) return;
-        this.ballGeom.material.color.setRGB(color[0], color[1], color[2]);
-        this.ballGeom.material.specular.setRGB(color[3], color[4], color[5]);
-        this.ballGeom.material.emissive.setRGB(color[6], color[7], color[8]);
+    setColor(color) {
+        this.ballGeom.material.color.setRGB(...color.diffuse);
+        this.ballGeom.material.specular.setRGB(...color.specular);
+        this.ballGeom.material.emissive.setRGB(...color.emission);
     }
 }
 
@@ -1276,8 +1221,10 @@ class Dummy extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.dummy !== undefined)
-            this.setDummy(eventData.data.dummy);
+        if(eventData.data.dummySize !== undefined)
+            this.setDummySize(eventData.data.dummySize);
+        if(eventData.data.color !== undefined)
+            this.setDummyColor(eventData.data.color);
     }
 
     setLayer(layer) {
@@ -1285,26 +1232,12 @@ class Dummy extends BaseObject {
         this.visual.setLayer(layer);
     }
 
-    setDummy(dummy) {
-        if(dummy.size !== undefined)
-            this.setDummySize(dummy.size);
-        if(dummy.color !== undefined)
-            this.setDummyColor(dummy.color);
-        if(dummy.colors !== undefined)
-            this.setDummyColors(dummy.colors);
-    }
-
     setDummySize(size) {
         this.visual.setSize(size);
     }
 
     setDummyColor(color) {
-        this.visual.setColor(color.index, color.color);
-    }
-
-    setDummyColors(colors) {
-        for(var i = 0; i < colors.length; i++)
-            this.visual.setColor(i, colors[i]);
+        this.visual.setColor(color);
     }
 }
 
@@ -1343,7 +1276,10 @@ class CameraVisual extends BaseVisual {
             )
         );
         this.children[3].position.z = -0.05;
-        this.traverse(o => {o.userData.pickThisIdInstead = this.id});
+        this.children[3].userData.getsColor = true;
+        this.traverse(o => o.userData.pickThisIdInstead = this.id);
+
+        this.bodyGeoms = [this.children[3]];
     }
 
     clone(recursive) {
@@ -1355,13 +1291,11 @@ class CameraVisual extends BaseVisual {
         this.traverse((o) => {o.layers.mask = this.parentObject.computedLayer()});
     }
 
-    setColor(index, color) {
-        const reverseColorMap = [[3], [0, 1, 2]];
-        if(index < 0 || index >= reverseColorMap.length) return;
-        for(var childIndex of reverseColorMap[index]) {
-            this.children[childIndex].material.color.setRGB(color[0], color[1], color[2]);
-            this.children[childIndex].material.specular.setRGB(color[3], color[4], color[5]);
-            this.children[childIndex].material.emissive.setRGB(color[6], color[7], color[8]);
+    setColor(color) {
+        for(var c of this.bodyGeoms) {
+            c.material.color.setRGB(...color.diffuse);
+            c.material.specular.setRGB(...color.specular);
+            c.material.emissive.setRGB(...color.emission);
         }
     }
 }
@@ -1406,10 +1340,10 @@ class Camera extends BaseObject {
             if(c instanceof THREE.OrthographicCamera) return c;
         }
 
-        if(this.userData.perspectiveMode === undefined)
-            throw 'Cannot construct a Camera without perspectiveMode set';
+        if(this.userData.perspective === undefined)
+            throw 'Cannot construct a Camera without "perspective" set';
 
-        if(this.userData.perspectiveMode)
+        if(this.userData.perspective)
             var cameraObject = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
         else
             var cameraObject = new THREE.OrthographicCamera(window.innerWidth / - 2, window.innerWidth / 2, window.innerHeight / 2, window.innerHeight / - 2, 0.1, 1000);
@@ -1456,8 +1390,28 @@ class Camera extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.camera !== undefined)
-            this.setCamera(eventData.data.camera);
+        if(eventData.data.perspective !== undefined)
+            this.setCameraPerspectiveMode(eventData.data.perspective);
+        if(eventData.data.viewAngle !== undefined)
+            this.setCameraFOV(eventData.data.viewAngle);
+        if(eventData.data.orthoSize !== undefined)
+            this.setCameraOrthoSize(eventData.data.orthoSize);
+        if(eventData.data.nearClippingPlane !== undefined)
+            this.setCameraNear(eventData.data.nearClippingPlane);
+        if(eventData.data.farClippingPlane !== undefined)
+            this.setCameraFar(eventData.data.farClippingPlane);
+        if(eventData.data.color !== undefined)
+            this.setCameraColor(eventData.data.color);
+        if(eventData.data.frustumVectors !== undefined)
+            this.setCameraFrustumVectors(eventData.data.frustumVectors);
+        if(eventData.data.showFrustum !== undefined)
+            this.setCameraFrustumVisibility(eventData.data.showFrustum);
+        if(eventData.data.allowTranslation !== undefined)
+            this.userData.enablePan = eventData.data.allowTranslation;
+        if(eventData.data.allowRotation !== undefined)
+            this.userData.enableRotate = eventData.data.allowRotation;
+        if(eventData.data.allowZoom !== undefined)
+            this.userData.enableZoom = eventData.data.allowZoom;
     }
 
     setLayer(layer) {
@@ -1465,37 +1419,10 @@ class Camera extends BaseObject {
         this.visual.setLayer(layer);
     }
 
-    setCamera(camera) {
-        if(camera.perspectiveMode !== undefined)
-            this.setCameraPerspectiveMode(camera.perspectiveMode);
-        if(camera.viewAngle !== undefined)
-            this.setCameraFOV(camera.viewAngle);
-        if(camera.orthoSize !== undefined)
-            this.setCameraOrthoSize(camera.orthoSize);
-        if(camera.nearClippingPlane !== undefined)
-            this.setCameraNear(camera.nearClippingPlane);
-        if(camera.farClippingPlane !== undefined)
-            this.setCameraFar(camera.farClippingPlane);
-        if(camera.color !== undefined)
-            this.setCameraColor(camera.color);
-        if(camera.colors !== undefined)
-            this.setCameraColors(camera.colors);
-        if(camera.frustumVectors !== undefined)
-            this.setCameraFrustumVectors(camera.frustumVectors);
-        if(camera.showFrustum !== undefined)
-            this.setCameraFrustumVisibility(camera.showFrustum);
-        if(camera.allowTranslation !== undefined)
-            this.userData.enablePan = camera.allowTranslation;
-        if(camera.allowRotation !== undefined)
-            this.userData.enableRotate = camera.allowRotation;
-        if(camera.allowZoom !== undefined)
-            this.userData.enableZoom = camera.allowZoom;
-    }
-
-    setCameraPerspectiveMode(perspectiveMode) {
-        if(this.userData.perspectiveMode !== undefined)
-            throw 'Camera perspectiveMode cannot be changed after creation';
-        this.userData.perspectiveMode = perspectiveMode;
+    setCameraPerspectiveMode(perspective) {
+        if(this.userData.perspective !== undefined)
+            throw 'Camera "perspective" cannot be changed after creation';
+        this.userData.perspective = perspective;
         this.cameraObject;
     }
 
@@ -1526,12 +1453,7 @@ class Camera extends BaseObject {
     }
 
     setCameraColor(color) {
-        this.visual.setColor(color.index, color.color);
-    }
-
-    setCameraColors(colors) {
-        for(var i = 0; i < colors.length; i++)
-            this.visual.setColor(i, colors[i]);
+        this.visual.setColor(color);
     }
 
     setCameraFrustumVectors(frustumVectors) {
@@ -1633,20 +1555,15 @@ class PointCloud extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.pointCloud !== undefined)
-            this.setPointCloud(eventData.data.pointCloud);
+        if(eventData.data.points !== undefined)
+            this.setPointCloudPoints(eventData.data.points);
+        if(eventData.data.pointSize !== undefined)
+            this.setPointCloudPointSize(eventData.data.pointSize);
     }
 
     setLayer(layer) {
         super.setLayer(layer);
         this.points.layers.mask = this.computedLayer();
-    }
-
-    setPointCloud(pointCloud) {
-        if(pointCloud.points !== undefined)
-            this.setPointCloudPoints(pointCloud.points);
-        if(pointCloud.pointSize !== undefined)
-            this.setPointCloudPointSize(pointCloud.pointSize);
     }
 
     setPointCloudPoints(points) {
@@ -1698,20 +1615,15 @@ class Octree extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.octree !== undefined)
-            this.setOctree(eventData.data.octree);
+        if(eventData.data.voxelSize !== undefined)
+            this.setOctreeVoxelSize(eventData.data.voxelSize);
+        if(eventData.data.voxels !== undefined)
+            this.setOctreeVoxels(eventData.data.voxels);
     }
 
     setLayer(layer) {
         super.setLayer(layer);
         this.mesh.layers.mask = this.computedLayer();
-    }
-
-    setOctree(octree) {
-        if(octree.voxelSize !== undefined)
-            this.setOctreeVoxelSize(octree.voxelSize);
-        if(octree.voxels !== undefined)
-            this.setOctreeVoxels(octree.voxels);
     }
 
     setOctreeVoxelSize(voxelSize) {
@@ -1768,18 +1680,27 @@ class ForceSensor extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.forceSensor !== undefined)
-            this.setForceSensor(eventData.data.forceSensor);
-    }
-
-    setForceSensor(forceSensor) {
-        if(forceSensor.intrinsicPose !== undefined)
-            this.setForceSensorIntrinsicPose(forceSensor.intrinsicPose);
+        if(eventData.data.intrinsicPose !== undefined)
+            this.setForceSensorIntrinsicPose(foreventData.dataceSensor.intrinsicPose);
     }
 
     setForceSensorIntrinsicPose(intrinsicPose) {
         this.sensorFrame.position.set(intrinsicPose[0], intrinsicPose[1], intrinsicPose[2]);
         this.sensorFrame.quaternion.set(intrinsicPose[3], intrinsicPose[4], intrinsicPose[5], intrinsicPose[6]);
+    }
+}
+
+class Script extends BaseObject {
+    constructor(sceneWrapper) {
+        super(sceneWrapper);
+        this.userData.type = 'script';
+    }
+}
+
+class DetachedScript extends BaseObject {
+    constructor(sceneWrapper) {
+        super(sceneWrapper);
+        this.userData.type = 'detachedScript';
     }
 }
 
@@ -2443,30 +2364,50 @@ class SceneWrapper {
         }
     }
 
-    addObject(data) {
+    addObject(eventData) {
         var obj = null;
-        if(data.data.shape !== undefined) {
+        switch(eventData.data.objectType) {
+        case 'shape':
             obj = new Shape(this);
-        } else if(data.data.joint !== undefined) {
+            break;
+        case 'joint':
             obj = new Joint(this);
-        } else if(data.data.dummy !== undefined) {
+            break;
+        case 'dummy':
             obj = new Dummy(this);
-        } else if(data.data.camera !== undefined) {
+            break;
+        case 'camera':
             obj = new Camera(this);
-        } else if(data.data.light !== undefined) {
+            break;
+        case 'light':
             obj = new Light(this);
-        } else if(data.data.pointCloud !== undefined) {
+            break;
+        case 'pointCloud':
             obj = new PointCloud(this);
-        } else if(data.data.octree !== undefined) {
+            break;
+        case 'octree':
             obj = new Octree(this);
-        } else if(data.data.forceSensor !== undefined) {
+            break;
+        case 'forceSensor':
             obj = new ForceSensor(this);
-        } else {
+            break;
+        case 'mesh':
+            obj = new Mesh(this);
+            break;
+        case 'script':
+            obj = new Script(this);
+            break;
+        case 'detachedScript':
+            obj = new DetachedScript(this);
+            break;
+        default:
+            console.warn(`unhandled object type: "${eventData.data.objectType}"`);
             obj = new UnknownObject(this);
+            break;
         }
         obj.init();
         this.scene.add(obj);
-        obj.update(data);
+        obj.update(eventData);
     }
 
     getObjectByUid(uid) {
@@ -2482,10 +2423,10 @@ class SceneWrapper {
         delete BaseObject.objectsByUid[obj.userData.uid];
     }
 
-    addDrawingObject(data) {
+    addDrawingObject(eventData) {
         var obj = new DrawingObject(this);
         this.scene.add(obj);
-        obj.update(data);
+        obj.update(eventData);
     }
 
     removeDrawingObject(obj) {
@@ -3411,7 +3352,8 @@ class ObjTree {
                 obj.userData.treeElementExpanded = obj.userData.parentUid !== -1;
             const children = obj === this.sceneWrapper.scene
                 ? [...obj.children].filter((o) => o.userData.uid !== undefined)
-                : obj.childObjects;
+                : obj.childObjects
+                ?? [];
             if(children.length > 0) {
                 var toggler = document.createElement('span');
                 toggler.classList.add('toggler');
@@ -3515,12 +3457,10 @@ visualizationStreamClient.addEventListener('objectRemoved', onObjectRemoved);
 visualizationStreamClient.addEventListener('drawingObjectAdded', onDrawingObjectAdded);
 visualizationStreamClient.addEventListener('drawingObjectChanged', onDrawingObjectChanged);
 visualizationStreamClient.addEventListener('drawingObjectRemoved', onDrawingObjectRemoved);
-visualizationStreamClient.addEventListener('environmentChanged', onEnvironmentChanged);
-visualizationStreamClient.addEventListener('appSettingsChanged', onAppSettingsChanged);
-visualizationStreamClient.addEventListener('simulationChanged', onSimulationChanged);
-visualizationStreamClient.addEventListener('appSession', onAppSession);
 visualizationStreamClient.addEventListener('genesisBegin', () => {});
 visualizationStreamClient.addEventListener('genesisEnd', () => {});
+visualizationStreamClient.addEventListener('msgDispatchTime', () => {});
+visualizationStreamClient.addEventListener('logMsg', () => {});
 
 var view = new View(document.querySelector('#view'), sceneWrapper);
 view.addEventListener('selectedObjectChanged', (event) => {
@@ -3730,6 +3670,47 @@ function onTreeItemSelected(uid) {
     view.setSelectedObject(obj, false);
 }
 
+function onAppChanged(eventData) {
+    if(eventData.data.defaultRotationStepSize !== undefined) {
+        transformControlsWrapper.transformControls.setRotationSnap(eventData.data.defaultRotationStepSize);
+        transformControlsWrapper.transformControls.userData.defaultRotationSnap = eventData.data.defaultRotationStepSize;
+    }
+
+    if(eventData.data.defaultTranslationStepSize !== undefined) {
+        transformControlsWrapper.transformControls.setTranslationSnap(eventData.data.defaultTranslationStepSize);
+        transformControlsWrapper.transformControls.userData.defaultTranslationSnap = eventData.data.defaultTranslationStepSize;
+    }
+
+    if(eventData.data.protocolVersion !== undefined) {
+        const suppVer = 3;
+        if(eventData.data.protocolVersion !== suppVer) {
+            window.alert(`Protocol version not supported. Please upgrade ${eventData.data.protocolVersion < suppVer ? 'CoppeliaSim' : 'threejsFrontend'}.`);
+            visualizationStreamClient.websocket.close();
+            document.querySelector('body').innerHTML = '';
+            return;
+        }
+    }
+
+    if(eventData.data.sessionId && visualizationStreamClient.sessionId !== eventData.data.sessionId) {
+        //visualizationStreamClient.seq = -1; // not needed anymore, since events are always contiguous
+        visualizationStreamClient.sessionId = eventData.data.sessionId;
+    }
+
+    render();
+}
+
+function onSceneChanged(eventData) {
+    view.setSelectedObject(null, false);
+    sceneWrapper.setSceneData(eventData);
+
+    if(eventData.data.simulationState !== undefined) {
+        simulationRunning = eventData.data.simulationState != 0;
+        transformControlsWrapper.reattach();
+    }
+
+    render();
+}
+
 function onObjectAdded(eventData) {
     sceneWrapper.addObject(eventData);
 
@@ -3739,6 +3720,9 @@ function onObjectAdded(eventData) {
 }
 
 function onObjectChanged(eventData) {
+    if(eventData.handle === -13) return onAppChanged(eventData);
+    if(eventData.handle === -12) return onSceneChanged(eventData);
+
     var obj = sceneWrapper.getObjectByUid(eventData.uid);
     if(obj === undefined) return;
 
@@ -3790,51 +3774,6 @@ function onDrawingObjectRemoved(eventData) {
     sceneWrapper.removeDrawingObject(obj);
 
     render();
-}
-
-function onEnvironmentChanged(eventData) {
-    view.setSelectedObject(null, false);
-    sceneWrapper.setSceneData(eventData);
-
-    render();
-}
-
-function onAppSettingsChanged(eventData) {
-    if(eventData.data.defaultRotationStepSize !== undefined) {
-        transformControlsWrapper.transformControls.setRotationSnap(eventData.data.defaultRotationStepSize);
-        transformControlsWrapper.transformControls.userData.defaultRotationSnap = eventData.data.defaultRotationStepSize;
-    }
-    if(eventData.data.defaultTranslationStepSize !== undefined) {
-        transformControlsWrapper.transformControls.setTranslationSnap(eventData.data.defaultTranslationStepSize);
-        transformControlsWrapper.transformControls.userData.defaultTranslationSnap = eventData.data.defaultTranslationStepSize;
-    }
-
-    render();
-}
-
-function onSimulationChanged(eventData) {
-    if(eventData.data.state !== undefined) {
-        simulationRunning = eventData.data.state != 0;
-        transformControlsWrapper.reattach();
-    }
-
-    render();
-}
-
-function onAppSession(eventData) {
-    var ver = eventData.data.protocolVersion ?? 1;
-    const suppVer = 2;
-    if(ver !== suppVer) {
-        window.alert(`Protocol version not supported. Please upgrade ${ver < suppVer ? 'CoppeliaSim' : 'threejsFrontend'}.`);
-        visualizationStreamClient.websocket.close();
-        document.querySelector('body').innerHTML = '';
-        return;
-    }
-
-    if(eventData.data.sessionId && visualizationStreamClient.sessionId !== eventData.data.sessionId) {
-        //visualizationStreamClient.seq = -1; // not needed anymore, since events are always contiguous
-        visualizationStreamClient.sessionId = eventData.data.sessionId;
-    }
 }
 
 function toggleObjTree() {
