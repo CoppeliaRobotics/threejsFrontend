@@ -364,8 +364,10 @@ class BaseObject extends THREE.Group {
             this.setMovementRelativity(eventData.data.movementRelativity);
         if(eventData.data.movementStepSize !== undefined)
             this.setMovementStepSize(eventData.data.movementStepSize);
-        if(eventData.data.boundingBox !== undefined)
-            this.setBoundingBox(eventData.data.boundingBox);
+        if(eventData.data.bbHSize !== undefined)
+            this.setBoundingBoxHSize(eventData.data.bbHSize);
+        if(eventData.data.bbPose !== undefined)
+            this.setBoundingBoxPose(eventData.data.bbPose);
         if(eventData.data.customData !== undefined)
             this.setCustomData(eventData.data.customData);
     }
@@ -522,14 +524,18 @@ class BaseObject extends THREE.Group {
         this.userData.rotationStepSize = movementStepSize[1] > 0 ? movementStepSize[1] : null;
     }
 
-    setBoundingBox(boundingBox) {
-        this.userData.boundingBox = boundingBox;
+    setBoundingBoxHSize(bbHSize) {
+        this.userData.bbHSize = bbHSize;
+    }
+
+    setBoundingBoxPose(bbPose) {
+        this.userData.bbPose = bbPose;
     }
 
     get boundingBoxPoints() {
-        if(!this.userData.boundingBox) return [];
-        var hsize = this.userData.boundingBox.hsize;
-        var pose = this.userData.boundingBox.pose;
+        if(!this.userData.bbPose || !this.userData.bbHSize) return [];
+        var hsize = this.userData.bbHSize;
+        var pose = this.userData.bbPose;
         var m = new THREE.Matrix4().compose(
             new THREE.Vector3(pose[0], pose[1], pose[2]),
             new THREE.Quaternion(pose[3], pose[3], pose[5], pose[6]),
@@ -2234,8 +2240,8 @@ class BoxHelper extends THREE.LineSegments {
 
         object.updateMatrixWorld();
         modelBaseMatrixWorld = object.matrixWorld.clone();
-        if(object.userData.boundingBox !== undefined) {
-            const pose = object.userData.boundingBox.pose;
+        if(object.userData.bbPose !== undefined) {
+            const pose = object.userData.bbPose;
             modelBaseMatrixWorld.multiply(
                 new THREE.Matrix4().compose(
                     new THREE.Vector3(...pose.slice(0, 3)),
@@ -2247,23 +2253,23 @@ class BoxHelper extends THREE.LineSegments {
         modelBaseMatrixWorldInverse = modelBaseMatrixWorld.clone().invert();
 
         for(var o of object.boundingBoxObjects) {
-            if(o.userData.boundingBox === undefined)
+            if(o.userData.bbPose === undefined)
                 continue;
-            if(o.userData.boundingBox.hsize === undefined)
+            if(o.userData.bbHSize === undefined)
                 continue;
             o.updateMatrixWorld();
             for(const dx of [-1, 1]) {
                 for(const dy of [-1, 1]) {
                     for(const dz of [-1, 1]) {
                         var v = new THREE.Vector3(
-                            dx * o.userData.boundingBox.hsize[0],
-                            dy * o.userData.boundingBox.hsize[1],
-                            dz * o.userData.boundingBox.hsize[2]
+                            dx * o.userData.bbHSize[0],
+                            dy * o.userData.bbHSize[1],
+                            dz * o.userData.bbHSize[2]
                         );
                         v.applyMatrix4(
                             new THREE.Matrix4().compose(
-                                new THREE.Vector3(...o.userData.boundingBox.pose.slice(0, 3)),
-                                new THREE.Quaternion(...o.userData.boundingBox.pose.slice(3)),
+                                new THREE.Vector3(...o.userData.bbPose.slice(0, 3)),
+                                new THREE.Quaternion(...o.userData.bbPose.slice(3)),
                                 new THREE.Vector3(1, 1, 1),
                             )
                         );
