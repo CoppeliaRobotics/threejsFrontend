@@ -594,7 +594,7 @@ class Shape extends BaseObject {
     setLayer(layer) {
         super.setLayer(layer);
         for(var mesh of this.children) {
-            if(mesh.userData.type !== 'mesh') continue;
+            if(mesh.userData.type !== 'meshobject') continue;
             for(var c of mesh.children) {
                 c.layers.mask = this.computedLayer();
             }
@@ -606,14 +606,17 @@ class Shape extends BaseObject {
     }
 }
 
-class Mesh extends THREE.Group {
+class Mesh extends BaseObject {
     constructor(sceneWrapper) {
         super();
-        this.userData.type = 'mesh';
+        this.userData.type = 'meshobject';
         this.sceneWrapper = sceneWrapper;
     }
 
     init() {
+        super.init();
+        this.mesh;
+        this.edgeMesh;
     }
 
     clone(recursive) {
@@ -621,7 +624,54 @@ class Mesh extends THREE.Group {
         return obj;
     }
 
+    get mesh() {
+        for(var c of this.children) {
+            if(c.type === 'Mesh' && c.userData.type == 'mesh')
+                return c;
+        }
+
+        const geometry = new THREE.BufferGeometry();
+        const material = new THREE.MeshPhongMaterial({
+            polygonOffset: true,
+            polygonOffsetFactor: 0.5,
+            polygonOffsetUnits: 0.0,
+        });
+        var mesh = new THREE.Mesh(geometry, material);
+        mesh.name = 'Mesh';
+        mesh.userData.type = 'mesh';
+        mesh.castShadow = settings.shadows.enabled;
+        mesh.receiveShadow = settings.shadows.enabled;
+        this.add(mesh);
+        return mesh;
+    }
+
+    get edgeMesh() {
+        for(var c of this.children) {
+            if(c.type === 'LineSegments' && c.userData.type == 'edges')
+                return c;
+        }
+
+        if(!this.mesh.geometry.hasAttribute('position')) {
+            // has not yet received data
+            return;
+        }
+
+        var data = {shadingAngle: Math.PI / 4.};
+        const edgeMesh = new THREE.LineSegments(
+            data.shadingAngle < 1e-4
+                ? new THREE.WireframeGeometry(this.mesh.geometry)
+                : new THREE.EdgesGeometry(this.mesh.geometry, data.shadingAngle * 180 / Math.PI),
+            new THREE.LineBasicMaterial({color: 0x000000})
+        );
+        edgeMesh.name = 'Edges';
+        edgeMesh.userData.type = 'edges';
+        this.add(edgeMesh);
+        return edgeMesh;
+    }
+
     update(eventData) {
+        super.update(eventData);
+
         const data = eventData.data;
 
         if(data.shapeUid !== undefined) {
@@ -629,33 +679,47 @@ class Mesh extends THREE.Group {
             shape.attach(this);
             this.position.set(0, 0, 0);
             this.quaternion.set(0, 0, 0, 1);
+            this.mesh.userData.pickThisIdInstead = shape.id;
         }
-
-        const geometry = new THREE.BufferGeometry();
-        // XXX: vertex attribute format handed by CoppeliaSim is not correct
-        //      we expand all attributes and discard indices
-        if(false) {
-            geometry.setIndex(data.indices);
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.vertices, 3));
-            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
-        } else {
-            var ps = [];
-            var ns = [];
-            for(var i = 0; i < data.indices.length; i++) {
-                var index = data.indices[i];
-                var p = data.vertices.slice(3 * index, 3 * (index + 1));
-                ps.push(p[0], p[1], p[2]);
-                var n = data.normals.slice(3 * i, 3 * (i + 1));
-                ns.push(n[0], n[1], n[2]);
+        if(data.indices !== undefined && data.vertices !== undefined) {
+            // XXX: vertex attribute format handed by CoppeliaSim is not correct
+            //      we expand all attributes and discard indices
+            if(false) {
+                this.mesh.geometry.setIndex(data.indices);
+                this.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.vertices, 3));
+                this.mesh.geometry.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
+            } else {
+                var ps = [];
+                var ns = [];
+                for(var i = 0; i < data.indices.length; i++) {
+                    var index = data.indices[i];
+                    var p = data.vertices.slice(3 * index, 3 * (index + 1));
+                    ps.push(p[0], p[1], p[2]);
+                    if(data.normals !== undefined) {
+                        var n = data.normals.slice(3 * i, 3 * (i + 1));
+                        ns.push(n[0], n[1], n[2]);
+                    }
+                }
+                this.mesh.geometry.setAttribute('position', new THREE.Float32BufferAttribute(ps, 3));
+                if(data.normals !== undefined)
+                    this.mesh.geometry.setAttribute('normal', new THREE.Float32BufferAttribute(ns, 3));
             }
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(ps, 3));
-            geometry.setAttribute('normal', new THREE.Float32BufferAttribute(ns, 3));
+            this.mesh.geometry.computeBoundingBox();
+            this.mesh.geometry.computeBoundingSphere();
         }
-        geometry.computeBoundingBox();
-        geometry.computeBoundingSphere();
-        var texture = null;
+        if(data.culling !== undefined) {
+            this.mesh.material.side = data.culling ? THREE.FrontSide : THREE.DoubleSide;
+        }
+        if(data.color !== undefined) {
+            if(data.color.diffuse !== undefined)
+                this.mesh.material.color = new THREE.Color(...data.color.diffuse);
+            if(data.color.specular !== undefined)
+                this.mesh.material.specular = new THREE.Color(...data.color.specular);
+            if(data.color.emission !== undefined)
+                this.mesh.material.emissive = new THREE.Color(...data.color.emission);
+        }
         if(data.rawTexture !== undefined) {
-            texture = new THREE.DataTexture(data.rawTexture, data.textureResolution[0], data.textureResolution[1], THREE.RGBAFormat);
+            var texture = new THREE.DataTexture(data.rawTexture, data.textureResolution[0], data.textureResolution[1], THREE.RGBAFormat);
             if(data.textureRepeatU)
                 texture.wrapS = THREE.RepeatWrapping;
             if(data.textureRepeatV)
@@ -666,7 +730,7 @@ class Mesh extends THREE.Group {
                 texture.magFilter = texture.minFilter = THREE.NearestFilter;
 
             if(false) { // XXX: see above
-                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.textureCoordinates, 2));
+                this.mesh.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(data.textureCoordinates, 2));
             } else {
                 var uvs = [];
                 for(var i = 0; i < data.indices.length; i++) {
@@ -674,48 +738,30 @@ class Mesh extends THREE.Group {
                     var uv = data.textureCoordinates.slice(2 * i, 2 * (i + 1));
                     uvs.push(uv[0], uv[1]);
                 }
-                geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+                this.mesh.geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            }
+            this.mesh.material.map = texture;
+        }
+        if(data.options !== undefined) {
+            if((data.options & 2) > 0) {
+                this.mesh.material.wireframe = true;
             }
         }
-        const material = new THREE.MeshPhongMaterial({
-            side: data.culling ? THREE.FrontSide : THREE.DoubleSide,
-            color:    new THREE.Color(...data.color.diffuse),
-            specular: new THREE.Color(...data.color.specular),
-            emissive: new THREE.Color(...data.color.emission),
-            map: texture,
-            polygonOffset: true,
-            polygonOffsetFactor: 0.5,
-            polygonOffsetUnits: 0.0,
-        });
-        if((data.options & 2) > 0) {
-            material.wireframe = true;
+        if(data.transparency !== undefined) {
+            this.mesh.material.transparent = data.transparency > 1e-4;
+            this.mesh.material.opacity = 1 - data.transparency;
         }
-        if(data.transparency !== undefined && data.transparency > 1e-4) {
-            material.transparent = true;
-            material.opacity = 1 - data.transparency;
+        if(this.edgeMesh !== undefined && data.shapeUid !== undefined) {
+            this.edgeMesh.userData.pickThisIdInstead = shape.id;
         }
-        var mesh = new THREE.Mesh(geometry, material);
-        mesh.name = `Mesh ${i}`;
-        mesh.userData.type = 'mesh';
-        mesh.userData.pickThisIdInstead = this.id;
-        mesh.userData.showEdges = data.showEdges;
-        mesh.userData.shadingAngle = data.shadingAngle;
-        mesh.castShadow = settings.shadows.enabled;
-        mesh.receiveShadow = settings.shadows.enabled;
-
-        const edgeMesh = new THREE.LineSegments(
-            data.shadingAngle < 1e-4
-                ? new THREE.WireframeGeometry(mesh.geometry)
-                : new THREE.EdgesGeometry(mesh.geometry, data.shadingAngle * 180 / Math.PI),
-            new THREE.LineBasicMaterial({color: 0x000000})
-        );
-        edgeMesh.name = `Edges ${i}`;
-        edgeMesh.visible = data.showEdges;
-        edgeMesh.userData.type = 'edges';
-        edgeMesh.userData.pickThisIdInstead = this.id;
-
-        this.add(mesh);
-        this.add(edgeMesh);
+        if(this.edgeMesh !== undefined && data.shadingAngle !== undefined) {
+            this.edgeMesh.geometry.thresholdAngle = data.shadingAngle * 180 / Math.PI;
+            this.userData.shadingAngle = data.shadingAngle;
+        }
+        if(this.edgeMesh !== undefined && data.showEdges !== undefined) {
+            this.edgeMesh.visible = data.showEdges;
+            this.userData.showEdges = data.showEdges;
+        }
 
         this.parent.setLayer(this.parent.userData.layer);
     }
