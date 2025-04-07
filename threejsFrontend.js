@@ -77,8 +77,6 @@ class Settings {
                 boundingBoxModelSolidSide: THREE.FrontSide,
                 boundingBoxBlinkInterval: 0,
                 outline: false,
-                edges: true,
-                edgesColor: [1, 1, 1, 0.5],
             },
         };
         this.transformControls = {
@@ -2946,12 +2944,6 @@ class View {
 
         var previous = this.selectedObject;
 
-        if(previous !== null && settings.selection.style.edges) {
-            for(var o of previous.boundingBoxObjects)
-                if(o.userData.type == 'shape')
-                    o.setEdgesColor(null);
-        }
-
         if(obj == null) {
             this.bboxHelper.visible = false;
             this.selectedObject = null;
@@ -2975,12 +2967,6 @@ class View {
 
         if(settings.selection.style.outline)
             this.outlinePass.selectedObjects = this.selectedObject === null ? [] : [this.selectedObject];
-
-        if(current !== null && settings.selection.style.edges) {
-            for(var o of current.boundingBoxObjects)
-                if(o.userData.type == 'shape')
-                    o.setEdgesColor(settings.selection.style.edgesColor);
-        }
     }
 
     isPartOfSelection(obj) {
