@@ -1605,8 +1605,8 @@ class PointCloud extends BaseObject {
 
     update(eventData) {
         super.update(eventData);
-        if(eventData.data.points !== undefined)
-            this.setPointCloudPoints(eventData.data.points);
+        if(eventData.data.points !== undefined && eventData.data.colors !== undefined)
+            this.setPointCloudPoints(eventData.data.points, eventData.data.colors);
         if(eventData.data.pointSize !== undefined)
             this.setPointCloudPointSize(eventData.data.pointSize);
     }
@@ -1616,9 +1616,9 @@ class PointCloud extends BaseObject {
         this.points.layers.mask = this.computedLayer();
     }
 
-    setPointCloudPoints(points) {
-        this.points.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points.points, 3));
-        this.points.geometry.setAttribute('color', new THREE.Uint8ClampedBufferAttribute(points.colors, 4, true));
+    setPointCloudPoints(points, colors) {
+        this.points.geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+        this.points.geometry.setAttribute('color', new THREE.Uint8ClampedBufferAttribute(colors, 4, true));
         this.points.geometry.computeBoundingBox();
         this.points.geometry.computeBoundingSphere();
     }
