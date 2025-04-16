@@ -17,7 +17,7 @@ function P(n)
 end
 
 function sysCall_info()
-    return {autoStart = sim.getNamedBoolParam(P'autoStart') == true, menu = custom.menu}
+    return {menu = custom.menu}
 end
 
 function sysCall_init()
@@ -196,3 +196,5 @@ end
 function verbose()
     return sim.getNamedInt32Param(P'verbose') or 0
 end
+
+require('addOns.autoStart').setup{ns = custom.paramNamespace}
