@@ -346,22 +346,25 @@ class BaseObject extends THREE.Group {
             this.setPose(eventData.data.pose);
         if(eventData.data.layer !== undefined)
             this.setLayer(eventData.data.layer);
-        if(eventData.data.objectProperty !== undefined)
-            this.setObjectProperty(eventData.data.objectProperty);
-        if(eventData.data.modelProperty !== undefined)
-            this.setModelProperty(eventData.data.modelProperty);
+        if(eventData.data.objectPropertyFlags !== undefined)
+            this.setObjectProperty(eventData.data.objectPropertyFlags);
+        if(eventData.data.modelPropertyFlags !== undefined)
+            this.setModelProperty(eventData.data.modelPropertyFlags);
         if(eventData.data.modelBase !== undefined)
             this.setModelBase(eventData.data.modelBase);
         if(eventData.data.modelInvisible !== undefined)
             this.setModelInvisible(eventData.data.modelInvisible);
-        if(eventData.data.movementOptions !== undefined)
-            this.setMovementOptions(eventData.data.movementOptions);
-        if(eventData.data.movementPreferredAxes !== undefined)
-            this.setMovementPreferredAxes(eventData.data.movementPreferredAxes);
-        if(eventData.data.movementRelativity !== undefined)
-            this.setMovementRelativity(eventData.data.movementRelativity);
-        if(eventData.data.movementStepSize !== undefined)
-            this.setMovementStepSize(eventData.data.movementStepSize);
+        if(eventData.data.mov !== undefined)
+        {
+            if(eventData.data.mov.optionsFlags !== undefined)
+                this.setMovementOptions(eventData.data.mov.optionsFlags);
+            if(eventData.data.mov.preferredAxesFlags !== undefined)
+                this.setMovementPreferredAxes(eventData.data.mov.preferredAxesFlags);
+            if(eventData.data.mov.relativity !== undefined)
+                this.setMovementRelativity(eventData.data.mov.relativity);
+            if(eventData.data.mov.stepSize !== undefined)
+                this.setMovementStepSize(eventData.data.mov.stepSize);
+        }
         if(eventData.data.bbHSize !== undefined)
             this.setBoundingBoxHSize(eventData.data.bbHSize);
         if(eventData.data.bbPose !== undefined)
