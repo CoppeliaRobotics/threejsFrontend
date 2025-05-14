@@ -3512,7 +3512,10 @@ visualizationStreamClient.addEventListener('objectRemoved', onObjectRemoved);
 visualizationStreamClient.addEventListener('drawingObjectAdded', onDrawingObjectAdded);
 visualizationStreamClient.addEventListener('drawingObjectChanged', onDrawingObjectChanged);
 visualizationStreamClient.addEventListener('drawingObjectRemoved', onDrawingObjectRemoved);
-visualizationStreamClient.addEventListener('genesisBegin', () => {});
+visualizationStreamClient.addEventListener('genesisBegin', () => {
+    // XXX: to verify if it is still needed (moved from onSceneChanged)
+    view.setSelectedObject(null, false);
+});
 visualizationStreamClient.addEventListener('genesisEnd', () => {});
 visualizationStreamClient.addEventListener('msgDispatchTime', () => {});
 visualizationStreamClient.addEventListener('logMsg', () => {});
@@ -3755,7 +3758,7 @@ function onAppChanged(eventData) {
 }
 
 function onSceneChanged(eventData) {
-    view.setSelectedObject(null, false);
+    //view.setSelectedObject(null, false); // moved to onGenesisBegin
     sceneWrapper.setSceneData(eventData);
 
     if(eventData.data.simulationState !== undefined) {
