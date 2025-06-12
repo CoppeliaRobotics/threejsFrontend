@@ -1,4 +1,6 @@
 local sim = require 'sim'
+local simWS
+local simZMQ
 local cbor
 
 custom = {
