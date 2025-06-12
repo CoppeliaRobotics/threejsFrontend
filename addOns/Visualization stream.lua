@@ -1,4 +1,5 @@
-sim = require 'sim'
+local sim = require 'sim'
+local cbor
 
 custom = {
     menu = 'Connectivity\nVisualization stream',
@@ -22,8 +23,6 @@ end
 
 function sysCall_init()
     cbor = require 'org.conman.cbor'
-    base64 = require 'base64'
-    url = require 'socket.url'
 
     sentGenesis = {}
     resourcesDir = sim.getStringParam(sim.stringparam_resourcesdir)
@@ -160,6 +159,7 @@ function onWSMessage(server, connection, message)
 end
 
 function onWSHTTP(server, connection, resource, data)
+    local url = require 'socket.url'
     resource = url.unescape(resource)
     local status, data = 404, nil
     if resource == '/' then resource = '/' .. custom.rootResource end
