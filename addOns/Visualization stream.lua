@@ -24,7 +24,7 @@ function sysCall_info()
 end
 
 function sysCall_init()
-    cbor = require 'org.conman.cbor'
+    cbor = require 'simCBOR'
 
     sentGenesis = {}
     resourcesDir = sim.getStringParam(sim.stringparam_resourcesdir)
