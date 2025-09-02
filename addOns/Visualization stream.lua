@@ -5,7 +5,7 @@ local cbor
 
 custom = {
     menu = 'Connectivity\nVisualization stream',
-    rootResource = 'threejsFrontend.html',
+    rootResource = 'index.html',
     paramNamespace = 'visualizationStream',
 }
 pcall(function()
@@ -27,7 +27,7 @@ function sysCall_init()
     cbor = require 'simCBOR'
 
     sentGenesis = {}
-    resourcesDir = sim.getStringParam(sim.stringparam_resourcesdir)
+    resourcesDir = sim.getStringParam(sim.stringparam_resourcesdir) .. '/threejsFrontend'
 
     zmqEnable = sim.getNamedBoolParam(P'zmq.enable')
     wsEnable = sim.getNamedBoolParam(P'ws.enable')
