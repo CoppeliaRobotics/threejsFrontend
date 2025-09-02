@@ -1,63 +1,68 @@
-( function () {
+import {
+	ShaderMaterial,
+	UniformsUtils
+} from '../three.module.js';
+import { Pass, FullScreenQuad } from '../postprocessing/Pass.js';
 
-	class ShaderPass extends THREE.Pass {
+class ShaderPass extends Pass {
 
-		constructor( shader, textureID ) {
+	constructor( shader, textureID ) {
 
-			super();
-			this.textureID = textureID !== undefined ? textureID : 'tDiffuse';
+		super();
 
-			if ( shader instanceof THREE.ShaderMaterial ) {
+		this.textureID = ( textureID !== undefined ) ? textureID : 'tDiffuse';
 
-				this.uniforms = shader.uniforms;
-				this.material = shader;
+		if ( shader instanceof ShaderMaterial ) {
 
-			} else if ( shader ) {
+			this.uniforms = shader.uniforms;
 
-				this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
-				this.material = new THREE.ShaderMaterial( {
-					defines: Object.assign( {}, shader.defines ),
-					uniforms: this.uniforms,
-					vertexShader: shader.vertexShader,
-					fragmentShader: shader.fragmentShader
-				} );
+			this.material = shader;
 
-			}
+		} else if ( shader ) {
 
-			this.fsQuad = new THREE.FullScreenQuad( this.material );
+			this.uniforms = UniformsUtils.clone( shader.uniforms );
+
+			this.material = new ShaderMaterial( {
+
+				defines: Object.assign( {}, shader.defines ),
+				uniforms: this.uniforms,
+				vertexShader: shader.vertexShader,
+				fragmentShader: shader.fragmentShader
+
+			} );
 
 		}
 
-		render( renderer, writeBuffer, readBuffer
-			/*, deltaTime, maskActive */
-		) {
+		this.fsQuad = new FullScreenQuad( this.material );
 
-			if ( this.uniforms[ this.textureID ] ) {
+	}
 
-				this.uniforms[ this.textureID ].value = readBuffer.texture;
+	render( renderer, writeBuffer, readBuffer /*, deltaTime, maskActive */ ) {
 
-			}
+		if ( this.uniforms[ this.textureID ] ) {
 
-			this.fsQuad.material = this.material;
+			this.uniforms[ this.textureID ].value = readBuffer.texture;
 
-			if ( this.renderToScreen ) {
+		}
 
-				renderer.setRenderTarget( null );
-				this.fsQuad.render( renderer );
+		this.fsQuad.material = this.material;
 
-			} else {
+		if ( this.renderToScreen ) {
 
-				renderer.setRenderTarget( writeBuffer ); // TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+			renderer.setRenderTarget( null );
+			this.fsQuad.render( renderer );
 
-				if ( this.clear ) renderer.clear( renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil );
-				this.fsQuad.render( renderer );
+		} else {
 
-			}
+			renderer.setRenderTarget( writeBuffer );
+			// TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+			if ( this.clear ) renderer.clear( renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil );
+			this.fsQuad.render( renderer );
 
 		}
 
 	}
 
-	THREE.ShaderPass = ShaderPass;
+}
 
-} )();
+export { ShaderPass };

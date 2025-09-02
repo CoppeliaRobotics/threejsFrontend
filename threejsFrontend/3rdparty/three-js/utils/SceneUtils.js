@@ -1,60 +1,71 @@
-( function () {
+import {
+	Group,
+	Mesh
+} from '../three.module.js';
 
-	function createMeshesFromInstancedMesh( instancedMesh ) {
 
-		const group = new THREE.Group();
-		const count = instancedMesh.count;
-		const geometry = instancedMesh.geometry;
-		const material = instancedMesh.material;
 
-		for ( let i = 0; i < count; i ++ ) {
+function createMeshesFromInstancedMesh( instancedMesh ) {
 
-			const mesh = new THREE.Mesh( geometry, material );
-			instancedMesh.getMatrixAt( i, mesh.matrix );
-			mesh.matrix.decompose( mesh.position, mesh.quaternion, mesh.scale );
-			group.add( mesh );
+	const group = new Group();
 
-		}
+	const count = instancedMesh.count;
+	const geometry = instancedMesh.geometry;
+	const material = instancedMesh.material;
 
-		group.copy( instancedMesh );
-		group.updateMatrixWorld(); // ensure correct world matrices of meshes
+	for ( let i = 0; i < count; i ++ ) {
 
-		return group;
+		const mesh = new Mesh( geometry, material );
 
-	}
+		instancedMesh.getMatrixAt( i, mesh.matrix );
+		mesh.matrix.decompose( mesh.position, mesh.quaternion, mesh.scale );
 
-	function createMultiMaterialObject( geometry, materials ) {
-
-		const group = new THREE.Group();
-
-		for ( let i = 0, l = materials.length; i < l; i ++ ) {
-
-			group.add( new THREE.Mesh( geometry, materials[ i ] ) );
-
-		}
-
-		return group;
+		group.add( mesh );
 
 	}
 
-	function detach( child, parent, scene ) {
+	group.copy( instancedMesh );
+	group.updateMatrixWorld(); // ensure correct world matrices of meshes
 
-		console.warn( 'THREE.SceneUtils: detach() has been deprecated. Use scene.attach( child ) instead.' );
-		scene.attach( child );
+	return group;
+
+}
+
+function createMultiMaterialObject( geometry, materials ) {
+
+	const group = new Group();
+
+	for ( let i = 0, l = materials.length; i < l; i ++ ) {
+
+		group.add( new Mesh( geometry, materials[ i ] ) );
 
 	}
 
-	function attach( child, scene, parent ) {
+	return group;
 
-		console.warn( 'THREE.SceneUtils: attach() has been deprecated. Use parent.attach( child ) instead.' );
-		parent.attach( child );
+}
 
-	}
+function detach( child, parent, scene ) {
 
-	THREE.SceneUtils = {};
-	THREE.SceneUtils.attach = attach;
-	THREE.SceneUtils.createMeshesFromInstancedMesh = createMeshesFromInstancedMesh;
-	THREE.SceneUtils.createMultiMaterialObject = createMultiMaterialObject;
-	THREE.SceneUtils.detach = detach;
+	console.warn( 'THREE.SceneUtils: detach() has been deprecated. Use scene.attach( child ) instead.' );
 
-} )();
+	scene.attach( child );
+
+}
+
+function attach( child, scene, parent ) {
+
+	console.warn( 'THREE.SceneUtils: attach() has been deprecated. Use parent.attach( child ) instead.' );
+
+	parent.attach( child );
+
+}
+
+
+
+export {
+	createMeshesFromInstancedMesh,
+	createMultiMaterialObject,
+	detach,
+	attach,
+};
