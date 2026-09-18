@@ -12,8 +12,8 @@ import { PointCloud } from './sceneObjects/PointCloud.js';
 import { Octree } from './sceneObjects/Octree.js';
 import { ForceSensor } from './sceneObjects/ForceSensor.js';
 import { Mesh } from './sceneObjects/Mesh.js';
+import { ScriptObject } from './sceneObjects/ScriptObject.js';
 import { Script } from './sceneObjects/Script.js';
-import { DetachedScript } from './sceneObjects/DetachedScript.js';
 import { UnknownObject } from './sceneObjects/UnknownObject.js';
 
 export class SceneWrapper {
@@ -71,11 +71,11 @@ export class SceneWrapper {
         case 'mesh':
             obj = new Mesh(this);
             break;
+        case 'scriptObject':
+            obj = new ScriptObject(this);
+            break;
         case 'script':
             obj = new Script(this);
-            break;
-        case 'detachedScript':
-            obj = new DetachedScript(this);
             break;
         default:
             console.warn(`unhandled object type: "${eventData.data.objectType}"`);
